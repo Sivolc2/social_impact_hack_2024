@@ -1,6 +1,5 @@
 from flask import Flask, render_template, jsonify
 from src.services.map_service import MapService
-from src.services.data_agent import DataAgent
 from src.services.dataset_service import DatasetService
 from src.services.policy_service import PolicyService
 from dotenv import load_dotenv
@@ -11,7 +10,6 @@ load_dotenv()
 
 app = Flask(__name__)
 map_service = MapService()
-data_agent = DataAgent()
 dataset_service = DatasetService()
 
 @app.route('/')

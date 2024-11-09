@@ -26,7 +26,7 @@
 
         .main-content {
             display: flex;
-            height: 80vh; /* Reduce height to make room for policy section */
+            height: 75vh; /* Reduce height to make room for policy section */
         }
 
         #map-container {
@@ -37,6 +37,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 0 20px;  /* Add padding to match search container */
         }
 
         #map {
@@ -123,10 +124,9 @@
 
         /* Add new styles */
         .search-container {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            right: 27%;  /* Adjust for chat window */
+            position: relative;
+            width: calc(75% - 20px);  /* Match map width minus padding */
+            margin: 0;  /* Remove margin */
             z-index: 1;
             display: flex;
             gap: 10px;
@@ -135,6 +135,7 @@
             border-radius: 12px;
             padding: 5px;
             border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 15px;
         }
 
         .search-bar {
@@ -179,13 +180,13 @@
         }
 
         .policy-cards-container {
-            position: relative; /* Change from absolute */
+            width: calc(75% - 20px);  /* Match search container width */
+            padding: 10px 0;  /* Remove left padding */
+            margin-left: 0;  /* Align with search bar */
             display: flex;
             gap: 20px;
             overflow-x: auto;
-            padding: 10px;
             height: 100%;
-            width: 75%; /* Match map width */
         }
 
         .policy-card {
@@ -346,6 +347,41 @@
         .mapboxgl-ctrl-bottom-left {
             display: none !important;
         }
+
+        /* Update policy section styling */
+        .policy-section {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;  /* Align items to the left */
+            padding: 20px 0 10px 20px;  /* Add left padding to match map container */
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        /* Update search container styling */
+        .search-container {
+            width: calc(75% - 20px);  /* Match map width minus padding */
+            margin: 0;  /* Remove margin */
+            z-index: 1;
+            display: flex;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 5px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 15px;
+        }
+
+        .search-bar {
+            flex-grow: 1;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.9);
+        }
     </style>
 </head>
 <body>
@@ -355,11 +391,6 @@
             <div id="map"></div>
             <div class="map-glow"></div>
             
-            <!-- Search Bar -->
-            <div class="search-container">
-                <input type="text" class="search-bar" placeholder="Search policies or regions...">
-            </div>
-
             <!-- Map Type Buttons -->
             <div class="map-type-buttons">
                 <button class="map-type-button active">Satellite</button>
@@ -419,6 +450,9 @@
 
     <!-- New Policy Section -->
     <div class="policy-section">
+        <div class="search-container">
+            <input type="text" class="search-bar" placeholder="Search policies or regions...">
+        </div>
         <div class="policy-cards-container">
             <!-- Policy cards remain the same -->
             <div class="policy-card">
