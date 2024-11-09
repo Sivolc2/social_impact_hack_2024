@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, url_for
 from src.services.map_service import MapService
 from src.services.dataset_service import DatasetService
 from src.services.policy_service import PolicyService
@@ -8,13 +8,16 @@ import os
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, 
+    static_folder='static',  # Add static folder configuration
+    template_folder='templates'
+)
 map_service = MapService()
 dataset_service = DatasetService()
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('base.html')
 
 @app.route('/api/map/base')
 def get_base_map():
