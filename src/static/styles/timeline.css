@@ -1,9 +1,13 @@
-.timeline-controls {
-    position: absolute;
+.timeline-container {
+    position: fixed;
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
     width: 70%;
+    z-index: 1000;
+}
+
+.timeline-controls {
     display: flex;
     align-items: center;
     gap: 15px;
@@ -11,7 +15,6 @@
     padding: 10px 20px;
     border-radius: 12px;
     backdrop-filter: blur(10px);
-    z-index: 10;
 }
 
 .timeline-button {
@@ -69,6 +72,67 @@
 .timeline-labels {
     display: flex;
     justify-content: space-between;
+    color: white;
+    font-size: 12px;
+}
+
+.speed-controls {
+    display: flex;
+    gap: 5px;
+    margin-left: 10px;
+}
+
+.speed-button {
+    padding: 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    font-size: 12px;
+    color: white;
+}
+
+.speed-button.active {
+    background: #4CAF50;
+    color: white;
+    border-color: #45a049;
+}
+
+.speed-button:hover {
+    background: #e0e0e0;
+}
+
+.speed-button.active:hover {
+    background: #45a049;
+}
+
+.custom-speed-container {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.custom-speed-input {
+    width: 50px;
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 12px;
+    padding: 2px;
+    text-align: right;
+    -moz-appearance: textfield;
+}
+
+.custom-speed-input::-webkit-inner-spin-button,
+.custom-speed-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.custom-speed-container span {
     color: white;
     font-size: 12px;
 } 

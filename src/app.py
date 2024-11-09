@@ -1,9 +1,10 @@
-from flask import Flask, render_template, jsonify, url_for
+from flask import Flask, render_template, jsonify, url_for, request
 from src.services.map_service import MapService
 from src.services.dataset_service import DatasetService
-from src.services.policy_service import PolicyService
 from dotenv import load_dotenv
 import os
+from datetime import datetime
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -24,15 +25,30 @@ def get_base_map():
     """Return base map configuration"""
     return jsonify(map_service.get_base_map_config())
 
-@app.route('/api/map/policy/<policy_id>')
-def get_policy_data(policy_id):
+@app.route('/api/map/policy/water_management')
+def get_policy_data():
     try:
-        policy_data = map_service.get_policy_data(policy_id)
-        if policy_data is None:
-            return jsonify({"error": "Policy not found"}), 404
-        return jsonify(policy_data)
+        # Get timestamp from query parameter or use current time
+        timestamp_str = request.args.get('timestamp')
+        if timestamp_str:
+            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        else:
+            timestamp = datetime.now()
+        
+        # Example coordinates for Sub-Saharan Africa
+        center_lat = 8.7832
+        center_lng = 34.5085
+        
+        data = map_service.generate_hexagon_data(center_lat, center_lng, timestamp)
+        
+        # Validate data before returning
+        if not data or not data.get('features'):
+            app.logger.error("Generated data is empty or invalid")
+            return jsonify({"error": "Failed to generate valid data"}), 500
+            
+        return jsonify(data)
     except Exception as e:
-        print(f"Error processing policy data: {str(e)}")
+        app.logger.error(f"Error generating policy data: {str(e)}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/map/update_view', methods=['POST'])
