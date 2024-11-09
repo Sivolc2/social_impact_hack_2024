@@ -10,6 +10,7 @@ setup(
         "pandas",
         "geopandas",
         "numpy",
+        "h3"
         # "fetch-ai-uagents"
     ]
 ) 

@@ -14,23 +14,37 @@
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
     
     <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            height: 100vh;
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
             display: flex;
-            overflow: hidden;
+            flex-direction: column;
+            overflow-x: hidden;
+            background: #000000;
+        }
+
+        .main-content {
+            display: flex;
+            height: 80vh; /* Reduce height to make room for policy section */
         }
 
         #map-container {
             width: 75%;
-            height: 100vh;
+            height: 100%;
             position: relative;
+            background: radial-gradient(circle at center, #0B3D91 0%, #000000 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #map {
             width: 100%;
-            height: 100%;
+            height: 90%;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 0 50px rgba(11, 61, 145, 0.3);
         }
 
         .map-overlay {
@@ -47,8 +61,9 @@
         #chat-container {
             width: 25%;
             height: 100vh;
-            background: white;
-            border-left: 1px solid #ccc;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
             display: flex;
             flex-direction: column;
         }
@@ -105,77 +120,502 @@
             background: white;
             margin-right: auto;
         }
+
+        /* Add new styles */
+        .search-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 27%;  /* Adjust for chat window */
+            z-index: 1;
+            display: flex;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 5px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .search-bar {
+            flex-grow: 1;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .map-type-buttons {
+            position: absolute;
+            top: 20px;
+            right: 20px;  /* Changed from right: 27% to right: 20px */
+            z-index: 2;   /* Increased z-index to ensure buttons appear above map */
+            display: flex;
+            gap: 10px;
+        }
+
+        .map-type-button {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .map-type-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .map-type-button.active {
+            background: #e8f0fe;
+            border-color: #4285f4;
+            color: #4285f4;
+        }
+
+        .policy-cards-container {
+            position: relative; /* Change from absolute */
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            padding: 10px;
+            height: 100%;
+            width: 75%; /* Match map width */
+        }
+
+        .policy-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            min-width: 300px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .policy-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .policy-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .policy-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .policy-status {
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 14px;
+        }
+
+        .status-active {
+            background: #e7f5e7;
+            color: #2e7d32;
+        }
+
+        .status-proposed {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+
+        .policy-location {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .policy-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        /* Add star field animation */
+        .stars {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background-image: 
+                radial-gradient(2px 2px at 20px 30px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 40px 70px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 50px 160px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 90px 40px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 130px 80px, #fff, rgba(0,0,0,0));
+            background-repeat: repeat;
+            animation: stars 100s linear infinite;
+            opacity: 0.3;
+        }
+
+        @keyframes stars {
+            from {
+                transform: translateY(0);
+            }
+            to {
+                transform: translateY(-100%);
+            }
+        }
+
+        /* Add a subtle glow effect to the map */
+        .map-glow {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            box-shadow: inset 0 0 100px rgba(11, 61, 145, 0.3);
+            border-radius: 20px;
+        }
+
+        /* Update scrollbar styling for policy container */
+        .policy-cards-container::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .policy-cards-container::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        .policy-cards-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        .policy-cards-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Add these styles in the <style> section */
+        .mapboxgl-ctrl-bottom-right,
+        .mapboxgl-ctrl-bottom-left {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
-    <div id="map-container">
-        <div id="map"></div>
-        <div class="map-overlay">
-            <h3>Layer Controls</h3>
-            <div id="layer-controls">
-                <!-- Layer controls will be dynamically added here -->
+    <div class="main-content">
+        <div id="map-container">
+            <div class="stars"></div>
+            <div id="map"></div>
+            <div class="map-glow"></div>
+            
+            <!-- Search Bar -->
+            <div class="search-container">
+                <input type="text" class="search-bar" placeholder="Search policies or regions...">
+            </div>
+
+            <!-- Map Type Buttons -->
+            <div class="map-type-buttons">
+                <button class="map-type-button active">Satellite</button>
+                <button class="map-type-button">Terrain</button>
+            </div>
+
+            <!-- Legend -->
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff1744"></div>
+                    <span>Critical Impact</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff4444"></div>
+                    <span>High Impact</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff8a65"></div>
+                    <span>Medium-High Impact</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffbb33"></div>
+                    <span>Medium Impact</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #79c879"></div>
+                    <span>Medium-Low Impact</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00C851"></div>
+                    <span>Low Impact</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00e676"></div>
+                    <span>Minimal Impact</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="chat-container">
+            <div id="chat-messages">
+                <!-- Messages will be dynamically added here -->
+                <div class="message agent-message">
+                    Hello! I'm your environmental data assistant. How can I help you today?
+                </div>
+            </div>
+            <div id="chat-input-container">
+                <textarea 
+                    id="chat-input" 
+                    placeholder="Type your message here..." 
+                    rows="3"
+                ></textarea>
+                <button id="send-button">Send</button>
             </div>
         </div>
     </div>
 
-    <div id="chat-container">
-        <div id="chat-messages">
-            <!-- Messages will be dynamically added here -->
-            <div class="message agent-message">
-                Hello! I'm your environmental data assistant. How can I help you today?
+    <!-- New Policy Section -->
+    <div class="policy-section">
+        <div class="policy-cards-container">
+            <!-- Policy cards remain the same -->
+            <div class="policy-card">
+                <div class="policy-header">
+                    <h3 class="policy-title">Water Management Policy</h3>
+                    <span class="policy-status status-active">Active</span>
+                </div>
+                <div class="policy-location">
+                    <span>📍 Sub-Saharan Africa</span>
+                </div>
+                <div class="policy-metrics">
+                    <div class="metric">
+                        <div class="metric-value">5000</div>
+                        <div class="metric-label">Hectares Restored</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">120</div>
+                        <div class="metric-label">Communities</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">85%</div>
+                        <div class="metric-label">Cost Efficiency</div>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div id="chat-input-container">
-            <textarea 
-                id="chat-input" 
-                placeholder="Type your message here..." 
-                rows="3"
-            ></textarea>
-            <button id="send-button">Send</button>
+
+            <div class="policy-card">
+                <div class="policy-header">
+                    <h3 class="policy-title">Sustainable Agriculture Initiative</h3>
+                    <span class="policy-status status-proposed">Proposed</span>
+                </div>
+                <div class="policy-location">
+                    <span>📍 South Asia</span>
+                </div>
+                <div class="policy-metrics">
+                    <div class="metric">
+                        <div class="metric-value">3000</div>
+                        <div class="metric-label">Hectares Restored</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">75</div>
+                        <div class="metric-label">Communities</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">92%</div>
+                        <div class="metric-label">Cost Efficiency</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // Wait for the DOM to be fully loaded
         document.addEventListener('DOMContentLoaded', function() {
-            // Set Mapbox token
             const MAPBOX_TOKEN = 'pk.eyJ1Ijoic2l2b2xjMiIsImEiOiJjbTNhbmd1dWsxM21tMmlvcms2Ym01b3J1In0.Oeee5mLjSKlT-vyBX5DpGQ';
             mapboxgl.accessToken = MAPBOX_TOKEN;
 
-            // Initialize the deck.gl map
             fetch('/api/map/base')
                 .then(response => response.json())
                 .then(config => {
                     // Create mapbox base map
-                    const mapboxMap = new mapboxgl.Map({
+                    const map = new mapboxgl.Map({
                         container: 'map',
                         style: config.mapStyle,
-                        interactive: false,
                         center: [config.initialViewState.longitude, config.initialViewState.latitude],
                         zoom: config.initialViewState.zoom,
                         bearing: config.initialViewState.bearing,
-                        pitch: config.initialViewState.pitch
+                        pitch: config.initialViewState.pitch,
+                        projection: 'globe',
+                        antialias: true,
+                        padding: {top: 100, bottom: 100}
                     });
 
-                    // Create the deck.gl instance
-                    const deckgl = new deck.DeckGL({
-                        container: 'map',
-                        mapboxApiAccessToken: MAPBOX_TOKEN,
-                        mapStyle: config.mapStyle,
-                        initialViewState: config.initialViewState,
-                        controller: true,
-                        onViewStateChange: ({viewState}) => {
-                            mapboxMap.jumpTo({
-                                center: [viewState.longitude, viewState.latitude],
-                                zoom: viewState.zoom,
-                                bearing: viewState.bearing,
-                                pitch: viewState.pitch
+                    // Add atmosphere and globe effects
+                    map.on('style.load', () => {
+                        map.setFog({
+                            'color': 'rgb(186, 210, 235)',
+                            'high-color': 'rgb(36, 92, 223)',
+                            'horizon-blend': 0.02,
+                            'space-color': 'rgb(11, 11, 25)',
+                            'star-intensity': 0.6
+                        });
+
+                        // Add terrain and sky layers
+                        map.addSource('mapbox-dem', {
+                            'type': 'raster-dem',
+                            'url': 'mapbox://mapbox.terrain-rgb',
+                            'tileSize': 512,
+                            'maxzoom': 14
+                        });
+
+                        map.setTerrain({
+                            'source': 'mapbox-dem',
+                            'exaggeration': 1.5
+                        });
+
+                        map.addLayer({
+                            'id': 'sky',
+                            'type': 'sky',
+                            'paint': {
+                                'sky-type': 'atmosphere',
+                                'sky-atmosphere-sun': [0.0, 90.0],
+                                'sky-atmosphere-sun-intensity': 15
+                            }
+                        });
+
+                        // Set initial pitch for globe view
+                        map.setPitch(50);
+
+                        // Load policy data
+                        fetch('/api/map/policy/water_management')
+                            .then(response => response.json())
+                            .then(policyData => {
+                                // Add source for policy data
+                                map.addSource('policy-data', {
+                                    type: 'geojson',
+                                    data: policyData
+                                });
+
+                                // Add layer for policy hexagons
+                                map.addLayer({
+                                    'id': 'policy-hexagons',
+                                    'type': 'fill',
+                                    'source': 'policy-data',
+                                    'paint': {
+                                        'fill-color': ['get', 'color'],
+                                        'fill-opacity': 0.6
+                                    }
+                                });
+
+                                // Add outline layer
+                                map.addLayer({
+                                    'id': 'policy-hexagons-outline',
+                                    'type': 'line',
+                                    'source': 'policy-data',
+                                    'paint': {
+                                        'line-color': '#ffffff',
+                                        'line-width': 1,
+                                        'line-opacity': 0.5
+                                    }
+                                });
+
+                                // Add hover effect
+                                let currentPopup = null;  // Store reference to current popup
+
+                                map.on('mousemove', 'policy-hexagons', (e) => {
+                                    if (e.features.length > 0) {
+                                        const feature = e.features[0];
+                                        const metrics = feature.properties.metrics;
+                                        
+                                        // Remove existing popup if it exists
+                                        if (currentPopup) {
+                                            currentPopup.remove();
+                                        }
+                                        
+                                        // Update popup content
+                                        const popupContent = `
+                                            <strong>Impact Level:</strong> ${feature.properties.impact_level}<br>
+                                            <strong>Hectares Restored:</strong> ${metrics.hectares_restored}<br>
+                                            <strong>Communities Affected:</strong> ${metrics.communities_affected}<br>
+                                            <strong>Cost Efficiency:</strong> ${metrics.cost_efficiency}
+                                        `;
+                                        
+                                        // Create new popup and store reference
+                                        currentPopup = new mapboxgl.Popup()
+                                            .setLngLat(e.lngLat)
+                                            .setHTML(popupContent)
+                                            .addTo(map);
+                                    }
+                                });
+
+                                // Add mouseleave event to remove popup when leaving hexagons
+                                map.on('mouseleave', 'policy-hexagons', () => {
+                                    if (currentPopup) {
+                                        currentPopup.remove();
+                                        currentPopup = null;
+                                    }
+                                });
                             });
+                    });
+
+                    // Add zoom controls
+                    map.addControl(new mapboxgl.NavigationControl(), 'top-left');
+
+                    // Adjust pitch based on zoom level
+                    map.on('zoom', () => {
+                        const currentZoom = map.getZoom();
+                        if (currentZoom < 2) {
+                            map.setPitch(50);  // Adjusted for better globe view
+                        } else if (currentZoom > 5) {
+                            map.setPitch(0);
+                        } else {
+                            // Smooth transition between globe and flat view
+                            const pitch = Math.max(0, 50 * (5 - currentZoom) / 3);
+                            map.setPitch(pitch);
                         }
                     });
-
-                    // Add navigation control
-                    mapboxMap.addControl(new mapboxgl.NavigationControl(), 'top-left');
                 })
                 .catch(error => {
                     console.error('Error initializing map:', error);
