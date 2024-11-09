@@ -4,8 +4,8 @@ from typing import List, Optional
 import re
 
 # Import models from other agents
-from .data_agent import DataRequest, DataResponse
-from .insights_agent import InsightsRequest, InsightsResponse
+from data_agent import DataRequest, DataResponse
+from insights_agent import InsightsRequest, InsightsResponse
 
 router_agent = Agent(
     name="router_agent",
