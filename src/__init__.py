@@ -1,2 +1,1 @@
-# This makes the src directory a proper package
-from . import services 
+# Empty file is fine, just needs to exist 

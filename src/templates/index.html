@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Green - Environmental Impact Visualization</title>
+    <link rel="icon" href="data:,">
+    
+    <!-- Load required libraries -->
+    <script src="https://unpkg.com/@deck.gl/core@^8.9.0/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/layers@^8.9.0/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/mapbox@^8.9.0/dist.min.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
+    
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        #map-container {
+            width: 75%;
+            height: 100vh;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .map-overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1;
+        }
+
+        #chat-container {
+            width: 25%;
+            height: 100vh;
+            background: white;
+            border-left: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        #chat-input-container {
+            padding: 20px;
+            border-top: 1px solid #ccc;
+            background: white;
+        }
+
+        #chat-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            resize: none;
+        }
+
+        #send-button {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #send-button:hover {
+            background: #45a049;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            max-width: 80%;
+        }
+
+        .user-message {
+            background: #e3f2fd;
+            margin-left: auto;
+        }
+
+        .agent-message {
+            background: white;
+            margin-right: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <div id="map"></div>
+        <div class="map-overlay">
+            <h3>Layer Controls</h3>
+            <div id="layer-controls">
+                <!-- Layer controls will be dynamically added here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="chat-container">
+        <div id="chat-messages">
+            <!-- Messages will be dynamically added here -->
+            <div class="message agent-message">
+                Hello! I'm your environmental data assistant. How can I help you today?
+            </div>
+        </div>
+        <div id="chat-input-container">
+            <textarea 
+                id="chat-input" 
+                placeholder="Type your message here..." 
+                rows="3"
+            ></textarea>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // Wait for the DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set Mapbox token
+            const MAPBOX_TOKEN = 'pk.eyJ1Ijoic2l2b2xjMiIsImEiOiJjbTNhbmd1dWsxM21tMmlvcms2Ym01b3J1In0.Oeee5mLjSKlT-vyBX5DpGQ';
+            mapboxgl.accessToken = MAPBOX_TOKEN;
+
+            // Initialize the deck.gl map
+            fetch('/api/map/base')
+                .then(response => response.json())
+                .then(config => {
+                    // Create mapbox base map
+                    const mapboxMap = new mapboxgl.Map({
+                        container: 'map',
+                        style: config.mapStyle,
+                        interactive: false,
+                        center: [config.initialViewState.longitude, config.initialViewState.latitude],
+                        zoom: config.initialViewState.zoom,
+                        bearing: config.initialViewState.bearing,
+                        pitch: config.initialViewState.pitch
+                    });
+
+                    // Create the deck.gl instance
+                    const deckgl = new deck.DeckGL({
+                        container: 'map',
+                        mapboxApiAccessToken: MAPBOX_TOKEN,
+                        mapStyle: config.mapStyle,
+                        initialViewState: config.initialViewState,
+                        controller: true,
+                        onViewStateChange: ({viewState}) => {
+                            mapboxMap.jumpTo({
+                                center: [viewState.longitude, viewState.latitude],
+                                zoom: viewState.zoom,
+                                bearing: viewState.bearing,
+                                pitch: viewState.pitch
+                            });
+                        }
+                    });
+
+                    // Add navigation control
+                    mapboxMap.addControl(new mapboxgl.NavigationControl(), 'top-left');
+                })
+                .catch(error => {
+                    console.error('Error initializing map:', error);
+                });
+
+            // Chat functionality
+            const chatInput = document.getElementById('chat-input');
+            const sendButton = document.getElementById('send-button');
+            const chatMessages = document.getElementById('chat-messages');
+
+            function addMessage(message, isUser = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${isUser ? 'user-message' : 'agent-message'}`;
+                messageDiv.textContent = message;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function handleSend() {
+                const message = chatInput.value.trim();
+                if (message) {
+                    addMessage(message, true);
+                    chatInput.value = '';
+                    // TODO: Send message to backend and handle response
+                    // For now, just mock a response
+                    setTimeout(() => {
+                        addMessage("I received your message. This is a placeholder response.");
+                    }, 1000);
+                }
+            }
+
+            sendButton.addEventListener('click', handleSend);
+            chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

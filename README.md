@@ -64,16 +64,18 @@ Functional Requirements:
 
 Technical Requirements:
   Map Framework:
-    - Kepler.gl integration
-    - Custom layer definitions
+    - PyDeck integration
+    - Custom layer definitions (ScatterplotLayer, HexagonLayer, etc.)
     - View state management
     - Performance optimization
+    - WebGL-powered rendering
 
   Data Handling:
     - GeoJSON processing
-    - Vector tile support
+    - DataFrame integration
     - Real-time updates
     - Data caching
+    - Pandas/GeoPandas support
 
 Integration Points:
   - Dataset loading API
