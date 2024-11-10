@@ -10,11 +10,9 @@ def raster_to_h3(raster_path, h3_resolution):
         raster_data = src.read(1)  # Read the first band
         transform = src.transform
 
-        # Set up list to hold results
-        h3_cells = []
         # breakpoint()
         # Loop through each pixel in the raster
-        last_seen = set()
+        last_seen = {}
         for row in range(src.height):
             for col in range(src.width):
                 # Get the pixel value
@@ -27,19 +25,23 @@ def raster_to_h3(raster_path, h3_resolution):
 
                     # Get H3 cell for the lat/lon at specified resolution
                     h3_cell = h3.latlng_to_cell(lat, lon, h3_resolution)
-                    if h3_cell in last_seen:
+                    if h3_cell in last_seen.keys():
+                        last_seen[h3_cell].append(value)
                         continue
                     else:
-                        last_seen.add(h3_cell)
+                        last_seen[h3_cell] = [value]
 
 
-                    # Store the result as dictionary with cell and value
-                    h3_cells.append({
-                        'h3_index': h3_cell,
-                        "year": 2015,
-                        "timestamp": "2015-01-01T00:00:00",
-                        'population': value
-                    })
+        # Store the result as dictionary with cell and value
+        h3_cells = [
+            {
+                'h3_index': h3_cell,
+                "year": 2015,
+                "timestamp": "2015-01-01T00:00:00",
+                'productivity': max(values)
+            } for h3_cell, values in last_seen.items()
+        ]
+
 
     return h3_cells
 

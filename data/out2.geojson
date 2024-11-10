@@ -4,7 +4,7 @@
 "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
 "features": [
 { "type": "Feature", "properties": { "h3_index": "8363b1fffffffff", "year": 2015, "timestamp": "2015-01-01T00:00:00", "land cover": 0 }, "geometry": { "type": "Point", "coordinates": [ 51.275268461243193, 12.396489714027346 ] } },
-{ "type": "Feature", "properties": { "h3_index": "836386fffffffff", "year": 2015, "timestamp": "2015-01-01T00:00:00", "land cover": 0 }, "geometry": { "type": "Point", "coordinates": [ 51.495820694330746, 11.501174420148256 ] } },
+{ "type": "Feature", "properties": { "h3_index": "836386fffffffff", "year": 2015, "timestamp": "2015-01-01T00:00:00", "land cover": 1 }, "geometry": { "type": "Point", "coordinates": [ 51.495820694330746, 11.501174420148256 ] } },
 { "type": "Feature", "properties": { "h3_index": "836384fffffffff", "year": 2015, "timestamp": "2015-01-01T00:00:00", "land cover": 0 }, "geometry": { "type": "Point", "coordinates": [ 52.17438848816802, 12.257112441511252 ] } },
 { "type": "Feature", "properties": { "h3_index": "836385fffffffff", "year": 2015, "timestamp": "2015-01-01T00:00:00", "land cover": 0 }, "geometry": { "type": "Point", "coordinates": [ 53.057412880799333, 12.117234546299837 ] } },
 { "type": "Feature", "properties": { "h3_index": "8363aafffffffff", "year": 2015, "timestamp": "2015-01-01T00:00:00", "land cover": 0 }, "geometry": { "type": "Point", "coordinates": [ 53.924361760322626, 11.977040144591816 ] } },
