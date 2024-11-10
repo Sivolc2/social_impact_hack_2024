@@ -9,8 +9,44 @@ from typing import Dict, Any
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_ged_data(csv_path: str) -> pd.DataFrame:
-    """Load and preprocess GED CSV data"""
+def get_country_bounds():
+    """Return geographical bounds for countries of interest"""
+    return {
+        'Malawi': {
+            'lat_min': -17.0,
+            'lat_max': -9.5,
+            'lon_min': 32.0,
+            'lon_max': 36.0
+        },
+        # These are approximate bounds - you may want to adjust them
+        'Panama': {
+            'lat_min': 7.0,
+            'lat_max': 10.0,
+            'lon_min': -83.0,
+            'lon_max': -77.0
+        },
+        'Ethiopia': {
+            'lat_min': 3.0,
+            'lat_max': 15.0,
+            'lon_min': 33.0,
+            'lon_max': 48.0
+        },
+        'Libya': {
+            'lat_min': 19.5,
+            'lat_max': 33.0,
+            'lon_min': 10.0,
+            'lon_max': 25.0
+        },
+        'Somalia': {
+            'lat_min': -1.5,
+            'lat_max': 12.0,
+            'lon_min': 41.0,
+            'lon_max': 51.5
+        }
+    }
+
+def load_ged_data(csv_path: str, country: str = None) -> pd.DataFrame:
+    """Load and preprocess GED CSV data with optional country filtering"""
     logger.info(f"Loading GED data from {csv_path}")
     
     df = pd.read_csv(csv_path)
@@ -21,7 +57,21 @@ def load_ged_data(csv_path: str) -> pd.DataFrame:
     
     # Filter for years 2001-2015
     df = df[(df['year'] >= 2001) & (df['year'] <= 2015)]
-    logger.info(f"Filtered data to years 2001-2015, {len(df)} events remaining")
+    
+    # Country-specific filtering
+    if country:
+        if country == 'Malawi':
+            bounds = get_country_bounds()['Malawi']
+            df = df[
+                (df['latitude'] >= bounds['lat_min']) & 
+                (df['latitude'] <= bounds['lat_max']) &
+                (df['longitude'] >= bounds['lon_min']) & 
+                (df['longitude'] <= bounds['lon_max'])
+            ]
+        else:
+            df = df[df['country'] == country]
+            
+        logger.info(f"Filtered data for {country}, {len(df)} events remaining")
     
     # Ensure latitude and longitude are numeric
     df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
@@ -32,7 +82,7 @@ def load_ged_data(csv_path: str) -> pd.DataFrame:
     
     return df
 
-def aggregate_by_h3(df: pd.DataFrame, resolution: int = 6) -> Dict[str, Any]:
+def aggregate_by_h3(df: pd.DataFrame, resolution: int = 3) -> Dict[str, Any]:
     """Aggregate GED data by H3 cells and year"""
     logger.info(f"Aggregating data using H3 resolution {resolution}")
     
@@ -170,14 +220,23 @@ def aggregate_by_h3(df: pd.DataFrame, resolution: int = 6) -> Dict[str, Any]:
     
     return geojson
 
-def convert_ged_to_h3(input_path: str, output_path: str, resolution: int = 6):
-    """Convert GED CSV to H3-aggregated GeoJSON"""
+def convert_ged_to_h3(input_path: str, output_path: str, resolution: int = 3, country: str = None):
+    """Convert GED CSV to H3-aggregated GeoJSON for specific country"""
     try:
         # Load and process data
-        df = load_ged_data(input_path)
+        df = load_ged_data(input_path, country)
+        
+        # Modify output path to include country name if specified
+        if country:
+            output_path = str(Path(output_path).parent / f"ged_h3_{country.lower()}.geojson")
         
         # Aggregate by H3
         geojson = aggregate_by_h3(df, resolution)
+        
+        # Add country to metadata
+        if country:
+            geojson['metadata']['country'] = country
+            geojson['metadata']['bounds'] = get_country_bounds()[country]
         
         # Save output
         output_dir = Path(output_path).parent
@@ -200,8 +259,16 @@ if __name__ == "__main__":
                       help='Input GED CSV file path')
     parser.add_argument('--output', default='data/ged_h3_aggregated.geojson',
                       help='Output GeoJSON file path')
-    parser.add_argument('--resolution', type=int, default=6,
+    parser.add_argument('--resolution', type=int, default=3,
                       help='H3 resolution (0-15)')
+    parser.add_argument('--country', choices=['Panama', 'Malawi', 'Ethiopia', 'Libya', 'Somalia'],
+                      help='Country to filter data for')
     
     args = parser.parse_args()
-    convert_ged_to_h3(args.input, args.output, args.resolution) 
+    
+    # Process each country if none specified, otherwise process only the specified country
+    if args.country:
+        convert_ged_to_h3(args.input, args.output, args.resolution, args.country)
+    else:
+        for country in ['Panama', 'Malawi', 'Ethiopia', 'Libya', 'Somalia']:
+            convert_ged_to_h3(args.input, args.output, args.resolution, country)

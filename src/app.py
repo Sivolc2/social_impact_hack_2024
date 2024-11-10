@@ -97,14 +97,12 @@ def chat():
     def generate():
         try:
             if current_mode == 'data':
-                # Use data agent for data mode
                 response = asyncio.run(data_agent.process_query(user_message))
                 if response.get('error'):
                     yield f"data: {json.dumps({'chunk': response['response'], 'error': True})}\n\n"
                 else:
                     yield f"data: {json.dumps({'chunk': response['response']})}\n\n"
             else:
-                # Use analysis agent for analysis mode
                 for chunk in analysis_agent.stream_analysis(user_message):
                     if chunk:
                         yield f"data: {json.dumps({'chunk': chunk})}\n\n"
@@ -190,30 +188,31 @@ def process_hypothesis():
 @app.route('/send-to-map', methods=['POST'])
 def send_to_map():
     try:
-        # Get current timestamp or use default
-        current_time = datetime.now()
+        dataset_service = DatasetService()
+        datasets = dataset_service.load_all_geojson_datasets()
         
-        # Load the sample SDG data
-        data = map_service.load_sdg_sample()
+        # Ensure each dataset has the required structure
+        formatted_datasets = []
+        for dataset in datasets:
+            if isinstance(dataset, dict) and 'data' in dataset:
+                # Ensure data has features array
+                if not isinstance(dataset['data'], dict):
+                    dataset['data'] = {'features': []}
+                if 'features' not in dataset['data']:
+                    dataset['data']['features'] = []
+                formatted_datasets.append(dataset)
         
-        # Update the features with time-based patterns
-        if data and 'features' in data:
-            for feature in data['features']:
-                h3_index = feature['properties']['h3_index']
-                pattern = map_service._generate_cell_pattern(h3_index, current_time)
-                
-                # Ensure color is present and valid
-                if 'color' not in pattern or not pattern['color'].startswith('#'):
-                    pattern['color'] = '#ff0000'  # Default to red if invalid
-                    
-                feature['properties'].update(pattern)
-        
-        logger.info(f"Sending map data with {len(data.get('features', []))} features")
-        return jsonify(data)
+        return jsonify({
+            'status': 'success',
+            'datasets': formatted_datasets
+        })
     except Exception as e:
         error_msg = f"Error in send_to_map: {str(e)}"
         logger.error(error_msg)
-        return jsonify({'error': error_msg}), 500
+        return jsonify({
+            'status': 'error',
+            'error': error_msg
+        }), 500
 
 @app.route('/api/datasets/<dataset_id>/map', methods=['GET'])
 def get_dataset_map(dataset_id):
@@ -277,6 +276,23 @@ def get_sdg_data():
 @app.route('/data/<path:filename>')
 def serve_data(filename):
     return send_from_directory('data', filename)
+
+# Add this new route
+@app.route('/api/datasets/map', methods=['GET'])
+def get_all_datasets_map():
+    try:
+        dataset_service = DatasetService()
+        datasets = dataset_service.load_all_geojson_datasets()
+        return jsonify({
+            'status': 'success',
+            'datasets': datasets
+        })
+    except Exception as e:
+        logger.error(f"Error loading datasets: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.debug = True

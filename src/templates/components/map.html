@@ -1,168 +1,13 @@
 <div class="map-wrapper">
+    <div id="map-popup" class="map-popup">
+        <div class="popup-content"></div>
+    </div>
     <div id="map-container"></div>
     <div class="map-overlays">
         {% include 'components/legend.html' %}
         {% include 'components/timeline.html' %}
     </div>
 </div>
-
-<script>
-// Initialize map and popup globally
-let map;
-let popup;
-window.dataRequested = false;
-
-// Initialize the map when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    // Get mapbox token
-    const mapboxToken = '{{ mapbox_token }}';
-    
-    // Validate token
-    if (!mapboxToken || mapboxToken === 'None') {
-        console.error('Mapbox token not found');
-        document.getElementById('map-container').innerHTML = `
-            <div style="padding: 20px; color: red;">
-                Error: Mapbox token not configured. Please check your environment variables.
-            </div>`;
-        return;
-    }
-
-    // Initialize mapboxgl map
-    mapboxgl.accessToken = mapboxToken;
-    
-    try {
-        map = new mapboxgl.Map({
-            container: 'map-container',
-            style: 'mapbox://styles/mapbox/satellite-v9',
-            center: [0, 20],  // Default center at a neutral location
-            zoom: 2,  // Default zoom showing most of the world
-            pitch: 0,
-            bearing: 0,
-            projection: 'globe'
-        });
-
-        // Add atmosphere and stars
-        map.on('style.load', () => {
-            // Add atmosphere layer
-            map.setFog({
-                'color': 'rgb(186, 210, 235)',
-                'high-color': 'rgb(36, 92, 223)',
-                'horizon-blend': 0.02,
-                'space-color': 'rgb(11, 11, 25)',
-                'star-intensity': 0.6
-            });
-        });
-
-        // Initialize popup
-        popup = new mapboxgl.Popup({
-            closeButton: false,
-            closeOnClick: false
-        });
-
-        // Wait for map to load before making it available globally
-        map.on('load', () => {
-            window.map = map;
-            window.popup = popup;
-            console.log('Map initialized successfully');
-            
-            // Add source for hexagons
-            map.addSource('h3-hexagons', {
-                type: 'geojson',
-                data: {
-                    type: 'FeatureCollection',
-                    features: []
-                }
-            });
-
-            // Add fill layer
-            map.addLayer({
-                'id': 'h3-hexagons-fill',
-                'type': 'fill',
-                'source': 'h3-hexagons',
-                'paint': {
-                    'fill-color': ['get', 'color'],
-                    'fill-opacity': 0.7
-                }
-            });
-            
-            // Dispatch event when map is ready
-            window.dispatchEvent(new Event('mapInitialized'));
-        });
-
-    } catch (error) {
-        console.error('Error initializing map:', error);
-        document.getElementById('map-container').innerHTML = `
-            <div style="padding: 20px; color: red;">
-                Error initializing map: ${error.message}
-            </div>`;
-    }
-});
-
-// Make loadMapData available globally
-window.loadMapData = async function(shouldZoom = true) {
-    try {
-        // First try the API endpoint
-        let response = await fetch('/api/dataset/sdg-15-3-1');
-        
-        // If API fails, try direct file access
-        if (!response.ok) {
-            console.warn('API endpoint not available, trying direct file access');
-            response = await fetch('/data/sdg_panama_sample.geojson');
-            
-            if (!response.ok) {
-                throw new Error(`Failed to load data: ${response.status} ${response.statusText}`);
-            }
-        }
-        
-        const data = await response.json();
-        
-        if (!data || !data.features) {
-            throw new Error('Invalid data format received');
-        }
-
-        // Update the source with the loaded data
-        map.getSource('h3-hexagons').setData(data);
-        
-        // Only zoom to bounds if shouldZoom is true
-        if (shouldZoom) {
-            if (data.metadata && data.metadata.bounds) {
-                const bounds = data.metadata.bounds;
-                map.fitBounds([
-                    [bounds.min_lng, bounds.min_lat],
-                    [bounds.max_lng, bounds.max_lat]
-                ], { padding: 50 });
-            } else {
-                // Fallback to Panama bounds if metadata is not available
-                map.fitBounds([
-                    [-83.0, 7.2],  // Southwest coordinates
-                    [-77.2, 9.6]   // Northeast coordinates
-                ], { padding: 50 });
-            }
-        }
-
-        console.log('Map data loaded successfully');
-        
-        // Trigger initial metric update
-        const defaultMetric = 'land_degradation';
-        if (window.updateMapMetric) {
-            window.updateMapMetric(defaultMetric);
-        }
-        
-    } catch (error) {
-        console.error('Error loading map data:', error);
-        // Show error message on map
-        const mapContainer = document.getElementById('map-container');
-        if (mapContainer) {
-            mapContainer.innerHTML += `
-                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                           background: rgba(255,255,255,0.9); padding: 20px; border-radius: 8px;">
-                    <h3>Error Loading Data</h3>
-                    <p>${error.message}</p>
-                </div>`;
-        }
-    }
-}
-</script>
 
 <style>
 .map-wrapper {
@@ -187,28 +32,43 @@ window.loadMapData = async function(shouldZoom = true) {
     left: 0;
     right: 0;
     bottom: 0;
-    pointer-events: none; /* Allow clicks to pass through to map */
+    pointer-events: none;
     z-index: 1;
 }
 
-/* Make specific overlay elements interactive */
 .map-overlays .legend,
 .map-overlays .timeline {
-    pointer-events: auto; /* Re-enable interactions for specific elements */
+    pointer-events: auto;
 }
 
-.popup-content {
-    padding: 10px;
-    max-width: 200px;
+.mapboxgl-popup {
+    max-width: 300px;
 }
 
-.popup-content h4 {
-    margin: 0 0 8px 0;
-    color: #333;
+.mapboxgl-popup-content {
+    padding: 15px;
+    font-size: 12px;
+    line-height: 1.4;
 }
 
-.popup-content p {
+.popup-header {
+    margin-bottom: 8px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 4px;
+}
+
+.popup-metric {
+    display: flex;
+    justify-content: space-between;
     margin: 4px 0;
-    color: #666;
+}
+
+.popup-metric-label {
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+.popup-metric-value {
+    text-align: right;
 }
 </style> 
