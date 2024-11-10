@@ -97,4 +97,57 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(error => {
             console.error('Error initializing map:', error);
         });
+
+    // Replace the existing exportMapData function with this updated version
+    function exportMapData() {
+        // Get the current data from the map
+        const source = map.getSource('policy-data');
+        if (!source || !source._data) {
+            alert('No data available to export');
+            return;
+        }
+
+        const mapData = source._data.features;
+        
+        // Convert GeoJSON to CSV format
+        const headers = ['id', 'value', 'latitude', 'longitude'];
+        let csvContent = headers.join(',') + '\n';
+
+        mapData.forEach(feature => {
+            const center = feature.geometry.coordinates[0][0]; // Get the first coordinate of the hexagon
+            const row = [
+                feature.properties.id || '',
+                feature.properties.value || '',
+                center[1], // latitude
+                center[0]  // longitude
+            ];
+            csvContent += row.join(',') + '\n';
+        });
+        
+        // Create blob and trigger download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `map-data-export-${new Date().toISOString().split('T')[0]}.csv`;
+        
+        // Trigger download
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
+
+    // Move this event listener outside of the DOMContentLoaded event
+    // Add it at the end of the file
+    window.addEventListener('mapInitialized', () => {
+        const exportBtn = document.getElementById('export-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', exportMapData);
+        } else {
+            console.error('Export button not found in the DOM');
+        }
+    });
 }); 

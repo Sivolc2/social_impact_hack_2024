@@ -61,6 +61,15 @@ def get_available_layers():
     # Implementation for getting available layers
     pass
 
+@app.route('/api/export-data', methods=['GET'])
+def export_data():
+    try:
+        # Get current map data from your data service
+        data = data_agent.get_current_data()  # You'll need to implement this method
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.debug = True
     app.run() 

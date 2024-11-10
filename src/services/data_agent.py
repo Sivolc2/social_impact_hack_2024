@@ -137,5 +137,15 @@ async def msg_callback(ctx: Context, sender: str, request: DataRequest) -> None:
             methodology_notes="Error during processing"
         )
 
+def get_current_data(self):
+    """
+    Returns the currently loaded map data in a format suitable for export
+    """
+    # Return the current data in a structured format
+    # This will depend on how you're storing/managing your data
+    if hasattr(self, 'current_data'):
+        return self.current_data
+    return None
+
 if __name__ == "__main__":
     data_agent.run()
