@@ -1,7 +1,172 @@
 <div class="policy-content">
-    <div class="policy-header">Policy Impact</div>
-    <select class="policy-select">
-        <option value="water">Water Management</option>
-        <!-- Add other options as needed -->
-    </select>
-</div> 
+    <div class="policy-header">
+        <span>Data Metrics</span>
+        <select id="metric-select" class="metric-select">
+            <option value="land_degradation">Land Degradation</option>
+            <option value="soil_organic_carbon">Soil Organic Carbon</option>
+            <option value="vegetation_cover">Vegetation Cover</option>
+            <option value="biodiversity_index">Biodiversity Index</option>
+        </select>
+    </div>
+    <div class="metric-info">
+        <div id="metric-description"></div>
+        <div id="metric-unit"></div>
+    </div>
+</div>
+
+<script>
+// Initialize with default metric when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    const defaultMetric = 'land_degradation';
+    const colorScale = getMetricColorScale(defaultMetric);
+    const maxValue = getMetricMaxValue(defaultMetric);
+    
+    updateMapMetric(defaultMetric);
+    updateMetricInfo(defaultMetric);
+    updateLegend(defaultMetric, colorScale, maxValue);
+});
+
+document.getElementById('metric-select').addEventListener('change', function(e) {
+    const metricId = e.target.value;
+    updateMapMetric(metricId);
+});
+
+function updateMapMetric(metricId) {
+    if (window.map && window.map.getSource('h3-data')) {
+        const colorScale = getMetricColorScale(metricId);
+        const maxValue = getMetricMaxValue(metricId);
+        
+        // Update map layer
+        window.map.setPaintProperty('h3-layer', 'fill-color', [
+            'interpolate',
+            ['linear'],
+            ['get', metricId, ['get', 'metrics']],
+            0, colorScale[0],
+            maxValue, colorScale[1]
+        ]);
+        
+        // Update legend
+        updateLegend(metricId, colorScale, maxValue);
+        
+        // Update popup content to show the selected metric
+        window.map.off('mousemove', 'h3-layer');
+        window.map.on('mousemove', 'h3-layer', (e) => {
+            if (e.features.length > 0) {
+                const feature = e.features[0];
+                const metrics = feature.properties.metrics;
+                
+                if (metrics) {
+                    let value;
+                    try {
+                        value = typeof metrics === 'string' ? 
+                            JSON.parse(metrics)[metricId] : 
+                            metrics[metricId];
+                    } catch (error) {
+                        console.error('Error parsing metrics:', error);
+                        value = 0;
+                    }
+                    
+                    const unit = getMetricUnit(metricId);
+                    window.popup
+                        .setLngLat(e.lngLat)
+                        .setHTML(`
+                            <div class="popup-content">
+                                <h4>${getMetricName(metricId)}</h4>
+                                <p>Value: ${value?.toFixed(2) || '0.00'} ${unit}</p>
+                            </div>
+                        `)
+                        .addTo(window.map);
+                }
+            }
+        });
+        
+        // Update the metric info display
+        updateMetricInfo(metricId);
+    }
+}
+
+function getMetricColorScale(metricId) {
+    const colorScales = {
+        'land_degradation': ['#2ecc71', '#e74c3c'],
+        'soil_organic_carbon': ['#fff7fb', '#023858'],
+        'vegetation_cover': ['#ffffe5', '#004529'],
+        'biodiversity_index': ['#ffffcc', '#800026']
+    };
+    return colorScales[metricId] || ['#ffffff', '#000000'];
+}
+
+function getMetricMaxValue(metricId) {
+    const maxValues = {
+        'land_degradation': 1,
+        'soil_organic_carbon': 150,
+        'vegetation_cover': 100,
+        'biodiversity_index': 10
+    };
+    return maxValues[metricId] || 1;
+}
+
+function getMetricName(metricId) {
+    const names = {
+        'land_degradation': 'Land Degradation',
+        'soil_organic_carbon': 'Soil Organic Carbon',
+        'vegetation_cover': 'Vegetation Cover',
+        'biodiversity_index': 'Biodiversity Index'
+    };
+    return names[metricId] || metricId;
+}
+
+function getMetricUnit(metricId) {
+    const units = {
+        'land_degradation': 'index',
+        'soil_organic_carbon': 'tons/ha',
+        'vegetation_cover': '%',
+        'biodiversity_index': 'index'
+    };
+    return units[metricId] || '';
+}
+
+function updateMetricInfo(metricId) {
+    const descriptions = {
+        'land_degradation': 'Degree of land degradation (0-1)',
+        'soil_organic_carbon': 'Soil organic carbon content (tons/ha)',
+        'vegetation_cover': 'Percentage of vegetation cover (%)',
+        'biodiversity_index': 'Species diversity index (0-10)'
+    };
+    
+    const units = {
+        'land_degradation': 'index',
+        'soil_organic_carbon': 'tons/ha',
+        'vegetation_cover': '%',
+        'biodiversity_index': 'index'
+    };
+    
+    document.getElementById('metric-description').textContent = descriptions[metricId];
+    document.getElementById('metric-unit').textContent = `Unit: ${units[metricId]}`;
+}
+
+function updateLegend(metricId, colorScale, maxValue) {
+    // Update legend title
+    const legendTitle = document.getElementById('legend-title');
+    if (legendTitle) {
+        legendTitle.textContent = getMetricName(metricId);
+    }
+    
+    // Update gradient bar colors
+    const gradientBar = document.getElementById('legend-gradient-bar');
+    if (gradientBar) {
+        gradientBar.style.background = `linear-gradient(to right, ${colorScale[0]}, ${colorScale[1]})`;
+    }
+    
+    // Update min/max labels
+    const legendMin = document.getElementById('legend-min');
+    const legendMax = document.getElementById('legend-max');
+    const unit = getMetricUnit(metricId);
+    
+    if (legendMin) {
+        legendMin.textContent = `0 ${unit}`;
+    }
+    if (legendMax) {
+        legendMax.textContent = `${maxValue} ${unit}`;
+    }
+}
+</script> 

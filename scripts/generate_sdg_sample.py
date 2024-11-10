@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def generate_panama_sdg_data():
-    """Generate sample SDG 15.3.1 data for Panama using H3 grid"""
+    """Generate multidimensional SDG 15.3.1 data for Panama using H3 grid"""
     
     # Panama's approximate bounding box
     bounds = {
@@ -18,11 +18,10 @@ def generate_panama_sdg_data():
         'max_lng': -77.2
     }
     
-    # Use H3 resolution 6 for reasonable cell size
     resolution = 6
+    hexagons = set()
     
     # Generate base hexagons covering Panama
-    hexagons = set()
     for lat in np.arange(bounds['min_lat'], bounds['max_lat'], 0.1):
         for lng in np.arange(bounds['min_lng'], bounds['max_lng'], 0.1):
             hex_id = h3.latlng_to_cell(lat, lng, resolution)
@@ -30,44 +29,72 @@ def generate_panama_sdg_data():
     
     logger.info(f"Generated {len(hexagons)} hexagons covering Panama")
     
-    # Create features with simulated land degradation data
-    features = []
+    # Define multiple dimensions/metrics
+    metrics = {
+        'land_degradation': {
+            'name': 'Land Degradation',
+            'description': 'Degree of land degradation',
+            'unit': 'index',
+            'color_scale': ['#2ecc71', '#f1c40f', '#e67e22', '#e74c3c']  # Green to Red
+        },
+        'soil_organic_carbon': {
+            'name': 'Soil Organic Carbon',
+            'description': 'Soil organic carbon content',
+            'unit': 'tons/ha',
+            'color_scale': ['#fff7fb', '#023858']  # Light to Dark Blue
+        },
+        'vegetation_cover': {
+            'name': 'Vegetation Cover',
+            'description': 'Percentage of vegetation cover',
+            'unit': '%',
+            'color_scale': ['#ffffe5', '#004529']  # Light to Dark Green
+        },
+        'biodiversity_index': {
+            'name': 'Biodiversity Index',
+            'description': 'Species diversity index',
+            'unit': 'index',
+            'color_scale': ['#ffffcc', '#800026']  # Light Yellow to Dark Red
+        }
+    }
     
-    # Parameters for generating realistic patterns
+    features = []
     center_lat = (bounds['min_lat'] + bounds['max_lat']) / 2
     center_lng = (bounds['min_lng'] + bounds['max_lng']) / 2
     
     for hex_id in hexagons:
         try:
-            # Get cell center
             cell_center = h3.cell_to_latlng(hex_id)
+            boundary = h3.cell_to_boundary(hex_id)
+            coordinates = [[[vertex[1], vertex[0]] for vertex in boundary]]
+            coordinates[0].append(coordinates[0][0])
             
-            # Generate realistic degradation patterns
-            # Distance from center affects degradation (simulating higher degradation near urban areas)
+            # Generate correlated but distinct values for each metric
             dist_from_center = np.sqrt(
                 (cell_center[0] - center_lat)**2 + 
                 (cell_center[1] - center_lng)**2
             )
             
-            # Add some random variation
-            random_factor = np.random.normal(0, 0.1)
+            base_random = np.random.normal(0, 0.1)
+            metric_values = {}
             
-            # Calculate degradation value (0-1 scale)
-            # Higher values indicate more degradation
-            degradation_value = min(1.0, max(0.0,
-                0.3 + # base degradation
-                0.4 * (1 - dist_from_center/3) + # distance effect
-                random_factor # random variation
-            ))
-            
-            # Calculate component values
-            productivity_trend = -0.5 * degradation_value + random_factor
-            soil_carbon = 100 * (1 - degradation_value) + np.random.normal(0, 5)
-            
-            # Get boundary coordinates
-            boundary = h3.cell_to_boundary(hex_id)
-            coordinates = [[[vertex[1], vertex[0]] for vertex in boundary]]
-            coordinates[0].append(coordinates[0][0])  # Close the polygon
+            # Generate somewhat correlated values for each metric
+            for metric in metrics.keys():
+                random_factor = base_random + np.random.normal(0, 0.05)
+                value = min(1.0, max(0.0,
+                    0.3 + # base value
+                    0.4 * (1 - dist_from_center/3) + # distance effect
+                    random_factor # random variation
+                ))
+                
+                # Scale values according to metric type
+                if metric == 'soil_organic_carbon':
+                    value = value * 150  # 0-150 tons/ha
+                elif metric == 'vegetation_cover':
+                    value = value * 100  # 0-100%
+                elif metric == 'biodiversity_index':
+                    value = value * 10  # 0-10 index
+                
+                metric_values[metric] = float(value)
             
             feature = {
                 'type': 'Feature',
@@ -77,9 +104,7 @@ def generate_panama_sdg_data():
                 },
                 'properties': {
                     'h3_index': hex_id,
-                    'degradation_value': float(degradation_value),
-                    'productivity_trend': float(productivity_trend),
-                    'soil_carbon': float(soil_carbon),
+                    'metrics': metric_values,
                     'timestamp': datetime.now().isoformat()
                 }
             }
@@ -98,11 +123,11 @@ def generate_panama_sdg_data():
             'cell_count': len(features),
             'h3_resolution': resolution,
             'generated_at': datetime.now().isoformat(),
-            'bounds': bounds
+            'bounds': bounds,
+            'metrics': metrics
         }
     }
     
-    # Save to file
     output_path = 'data/sdg_panama_sample.geojson'
     with open(output_path, 'w') as f:
         json.dump(geojson, f)

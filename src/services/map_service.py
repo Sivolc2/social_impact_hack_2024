@@ -434,9 +434,19 @@ class MapService:
     def load_sdg_sample(self) -> dict:
         """Load and process the SDG 15.3.1 sample dataset"""
         try:
-            with open('data/sdg_panama_sample.geojson', 'r') as f:
+            # Check if file exists
+            file_path = 'data/sdg_panama_sample.geojson'
+            if not os.path.exists(file_path):
+                logger.error(f"SDG sample file not found at {file_path}")
+                return {'type': 'FeatureCollection', 'features': []}
+
+            with open(file_path, 'r') as f:
                 data = json.load(f)
             
+            if not data or 'features' not in data:
+                logger.error("Invalid data format in SDG sample file")
+                return {'type': 'FeatureCollection', 'features': []}
+
             # Update view state to center on Panama
             self.default_view_state.update({
                 "latitude": 8.4,
@@ -446,9 +456,39 @@ class MapService:
                 "bearing": 0
             })
             
-            # Process features to add colors based on degradation values
+            # Process features to ensure proper structure
             for feature in data['features']:
-                degradation = feature['properties']['degradation_value']
+                if 'properties' not in feature:
+                    feature['properties'] = {}
+                
+                # Handle metrics if they're stored as a string
+                if isinstance(feature['properties'].get('metrics'), str):
+                    try:
+                        feature['properties']['metrics'] = json.loads(feature['properties']['metrics'])
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse metrics JSON for feature")
+                        feature['properties']['metrics'] = {}
+                
+                # Ensure metrics exist
+                if 'metrics' not in feature['properties']:
+                    feature['properties']['metrics'] = {}
+                
+                metrics = feature['properties']['metrics']
+                
+                # Add default metrics if missing
+                default_metrics = {
+                    'land_degradation': 0.0,
+                    'soil_organic_carbon': 0.0,
+                    'vegetation_cover': 0.0,
+                    'biodiversity_index': 0.0
+                }
+                
+                for metric, default_value in default_metrics.items():
+                    if metric not in metrics:
+                        metrics[metric] = default_value
+                
+                # Add color based on land degradation (default metric)
+                degradation = metrics['land_degradation']
                 
                 # Assign impact level and color based on degradation value
                 if degradation >= 0.8:
@@ -465,10 +505,11 @@ class MapService:
                 feature['properties']['impact_level'] = impact
                 feature['properties']['color'] = self.impact_colors[impact]
             
+            logger.info(f"Successfully loaded SDG sample with {len(data['features'])} features")
             return data
             
         except Exception as e:
-            logger.error(f"Error loading SDG sample data: {str(e)}")
+            logger.error(f"Error loading SDG sample data: {str(e)}", exc_info=True)
             return {
                 'type': 'FeatureCollection',
                 'features': []
