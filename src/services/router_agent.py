@@ -1,7 +1,13 @@
 from uagents import Agent, Context, Model
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import re
+import requests
+import os
+import time
+import json
+
+#mailbox = e5170687-619b-49df-bb01-159fa4610bfa
 
 # Import models from other agents
 from data_agent import DataRequest, DataResponse
@@ -11,14 +17,13 @@ router_agent = Agent(
     name="router_agent",
     seed="router_seed_456",
     port=8002,
-    endpoint="http://127.0.0.1:8002/submit"
+    endpoint=["http://localhost:8002"]
 )
 
-@dataclass
-class UserQuery(Model):
+# Request/Response models for REST endpoint
+class QueryRequest(Model):
     question: str
 
-@dataclass
 class QueryResponse(Model):
     insights: List[str]
     recommendations: List[str]
@@ -26,66 +31,111 @@ class QueryResponse(Model):
     source_url: str
     analysis_notes: str
 
-def determine_query_type(question: str) -> tuple[str, str]:
-    """Determine the type of query and focus area based on the question."""
-    question_lower = question.lower()
-    
-    # Define keywords for different categories
-    data_keywords = {'statistics', 'numbers', 'data', 'how many', 'what percentage'}
-    insights_keywords = {'why', 'how', 'what should', 'recommend', 'analyze', 'explain'}
-    
-    # Define focus areas
-    focus_areas = {
-        'policy': {'policy', 'regulation', 'law', 'governance'},
-        'trends': {'trend', 'pattern', 'change', 'over time'},
-        'impacts': {'impact', 'effect', 'consequence', 'result'},
-        'solutions': {'solution', 'mitigation', 'prevention', 'strategy'}
-    }
+# Fetch.ai API Configuration
+FAUNA_URL = 'https://accounts.fetch.ai'
+TOKEN_URL = f'{FAUNA_URL}/v1/tokens'
+CLIENT_ID = 'agentverse'
+SCOPE = 'av'
 
-    # Determine query type
-    query_type = 'data' if any(keyword in question_lower for keyword in data_keywords) else 'insights'
-    
-    # Determine focus area
-    focus_area = 'trends'  # default
-    for area, keywords in focus_areas.items():
-        if any(keyword in question_lower for keyword in keywords):
-            focus_area = area
-            break
-    
-    return query_type, focus_area
+class QueryAnalyzer:
+    def __init__(self):
+        self.access_token = f"Bearer {os.getenv('FETCH_ACCESS_TOKEN')}"
+        
+    async def analyze_query(self, question: str) -> tuple[str, str, str]:
+        """Analyze query using Fetch.ai to determine type, focus area, and category."""
+        
+        # Create chat session
+        session_data = {
+            "email": os.getenv('FETCH_EMAIL'),
+            "requestedModel": "talkative-01"
+        }
+        
+        session_response = requests.post(
+            "https://agentverse.ai/v1beta1/engine/chat/sessions",
+            json=session_data,
+            headers={"Authorization": self.access_token}
+        ).json()
+        
+        session_id = session_response.get('session_id')
+        
+        # Prepare analysis prompt
+        prompt = f"""
+        Analyze this question about UNCCD goals and desertification:
+        "{question}"
+        
+        Classify the question into:
+        1. Query type: either 'data' (for statistical/numerical questions) or 'insights' (for analytical/explanatory questions)
+        2. Focus area: one of 'policy', 'trends', 'impacts', or 'solutions'
+        3. Data category: one of 'land_degradation', 'drought', or 'population'
+        
+        Respond in JSON format with these three classifications.
+        """
+        
+        message_data = {
+            "payload": {
+                "type": "user_message",
+                "user_message": prompt,
+                "session_id": session_id
+            }
+        }
+        
+        # Send message
+        requests.post(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
+            json=message_data,
+            headers={"Authorization": self.access_token}
+        )
+        
+        time.sleep(3)  # Wait for processing
+        
+        # Get analysis response
+        response = requests.get(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/responses",
+            headers={"Authorization": self.access_token}
+        ).json()
+        
+        # Stop session
+        requests.post(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
+            json={"payload": {"type": "stop"}},
+            headers={"Authorization": self.access_token}
+        )
+        
+        # Parse response
+        try:
+            if response.get('agent_response'):
+                analysis = json.loads(response['agent_response'][0])
+                return (
+                    analysis.get('query_type', 'insights'),
+                    analysis.get('focus_area', 'trends'),
+                    analysis.get('data_category', 'land_degradation')
+                )
+        except Exception as e:
+            ctx.logger.error(f"Error parsing query analysis: {str(e)}")
+        
+        # Default values if analysis fails
+        return 'insights', 'trends', 'land_degradation'
 
-def determine_data_category(question: str) -> str:
-    """Determine the data category based on the question."""
-    question_lower = question.lower()
-    
-    if any(word in question_lower for word in ['degradation', 'soil', 'land']):
-        return 'land_degradation'
-    elif any(word in question_lower for word in ['drought', 'dry', 'water scarcity']):
-        return 'drought'
-    elif any(word in question_lower for word in ['population', 'people', 'communities']):
-        return 'population'
-    
-    return 'land_degradation'  # default category
+# Replace the existing determine_query_type and determine_data_category functions
+# with the QueryAnalyzer class instance
+query_analyzer = QueryAnalyzer()
 
-@router_agent.on_message(model=UserQuery, replies=QueryResponse)
-async def handle_user_query(ctx: Context, sender: str, msg: UserQuery) -> None:
+@router_agent.on_rest_post("/query", QueryRequest, QueryResponse)
+async def handle_user_query(ctx: Context, req: QueryRequest) -> QueryResponse:
     try:
-        # Determine query type and focus area
-        query_type, focus_area = determine_query_type(msg.question)
+        # Use the analyzer to determine query characteristics
+        query_type, focus_area, data_category = await query_analyzer.analyze_query(req.question)
         
         if query_type == 'data':
-            # Get data first
-            data_category = determine_data_category(msg.question)
             data_response = await ctx.send(
                 "data_agent",
-                DataRequest(msg=msg.question, data_category=data_category)
+                DataRequest(msg=req.question, data_category=data_category)
             )
             
-            # Then get insights based on the data
             insights_response = await ctx.send(
                 "insights_agent",
                 InsightsRequest(
-                    question=msg.question,
+                    question=req.question,
                     focus_area=focus_area,
                     data_summary=data_response.data_summary,
                     source_url=data_response.source_url
@@ -101,16 +151,16 @@ async def handle_user_query(ctx: Context, sender: str, msg: UserQuery) -> None:
             )
         else:
             # For insight-focused queries, still get some basic data first
-            data_category = determine_data_category(msg.question)
+            data_category = determine_data_category(req.question)
             data_response = await ctx.send(
                 "data_agent",
-                DataRequest(msg=msg.question, data_category=data_category)
+                DataRequest(msg=req.question, data_category=data_category)
             )
             
             insights_response = await ctx.send(
                 "insights_agent",
                 InsightsRequest(
-                    question=msg.question,
+                    question=req.question,
                     focus_area=focus_area,
                     data_summary=data_response.data_summary,
                     source_url=data_response.source_url

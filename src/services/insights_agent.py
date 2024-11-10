@@ -1,8 +1,16 @@
 from uagents import Agent, Context, Model
 from dataclasses import dataclass
-from openai import AsyncOpenAI
-import os
 from typing import Dict, List
+import requests
+import json
+import os
+import time
+
+# Fetch.ai API Configuration
+FAUNA_URL = 'https://accounts.fetch.ai'
+TOKEN_URL = f'{FAUNA_URL}/v1/tokens'
+CLIENT_ID = 'agentverse'
+SCOPE = 'av'
 
 insights_agent = Agent(
     name="insights_agent",
@@ -27,9 +35,24 @@ class InsightsResponse(Model):
 
 class InsightsAnalyzer:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        self.access_token = f"Bearer {os.getenv('FETCH_ACCESS_TOKEN')}"
     
     async def generate_insights(self, question: str, focus_area: str, data_summary: str, source_url: str) -> Dict:
+        # Create chat session
+        session_data = {
+            "email": os.getenv('FETCH_EMAIL'),
+            "requestedModel": "talkative-01"
+        }
+        
+        session_response = requests.post(
+            "https://agentverse.ai/v1beta1/engine/chat/sessions",
+            json=session_data,
+            headers={"Authorization": self.access_token}
+        ).json()
+        
+        session_id = session_response.get('session_id')
+        
+        # Prepare analysis prompt
         prompt = f"""
         Analyze this data and question about UNCCD goals:
         Question: {question}
@@ -40,22 +63,66 @@ class InsightsAnalyzer:
         Provide comprehensive analysis with:
         1. Key insights derived from the data
         2. Actionable recommendations
-        3. Confidence level in the analysis
+        3. Confidence level in the analysis (0-1)
         4. Notable limitations or assumptions
         
-        Return a JSON with:
+        Respond in JSON format with these fields:
         - key_insights (list of strings)
         - recommendations (list of strings)
-        - confidence_level (0-1)
+        - confidence_level (float between 0-1)
         - analysis_notes (string)
         """
         
-        response = await self.client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            messages=[{"role": "user", "content": prompt}]
+        # Send analysis request
+        message_data = {
+            "payload": {
+                "type": "user_message",
+                "user_message": prompt,
+                "session_id": session_id
+            }
+        }
+        
+        # Send message
+        requests.post(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
+            json=message_data,
+            headers={"Authorization": self.access_token}
         )
         
-        return response.choices[0].message.content
+        time.sleep(5)  # Wait for processing
+        
+        # Get analysis response
+        response = requests.get(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/responses",
+            headers={"Authorization": self.access_token}
+        ).json()
+        
+        # Stop session
+        requests.post(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
+            json={"payload": {"type": "stop"}},
+            headers={"Authorization": self.access_token}
+        )
+        
+        # Parse and return response
+        if response.get('agent_response'):
+            try:
+                return json.loads(response['agent_response'][0])
+            except json.JSONDecodeError:
+                # Fallback if response isn't proper JSON
+                return {
+                    'key_insights': ["Error: Could not parse response"],
+                    'recommendations': ["Please try again"],
+                    'confidence_level': 0.0,
+                    'analysis_notes': "Error parsing response from AI"
+                }
+        
+        return {
+            'key_insights': ["Error: No response received"],
+            'recommendations': ["Please try again"],
+            'confidence_level': 0.0,
+            'analysis_notes': "No response from AI service"
+        }
 
 @insights_agent.on_message(model=InsightsRequest, replies=InsightsResponse)
 async def handle_insights_request(ctx: Context, sender: str, request: InsightsRequest) -> None:
@@ -66,15 +133,12 @@ async def handle_insights_request(ctx: Context, sender: str, request: InsightsRe
         analyzer = InsightsAnalyzer()
         
         # Generate insights
-        analysis_result = await analyzer.generate_insights(
+        result_dict = await analyzer.generate_insights(
             request.question,
             request.focus_area,
             request.data_summary,
             request.source_url
         )
-        
-        # Parse the JSON response
-        result_dict = eval(analysis_result)
         
         return InsightsResponse(
             key_insights=result_dict['key_insights'],

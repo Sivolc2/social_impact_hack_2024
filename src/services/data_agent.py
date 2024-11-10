@@ -3,10 +3,17 @@ from dataclasses import dataclass
 import aiohttp
 import json
 from bs4 import BeautifulSoup
-from openai import AsyncOpenAI
 import os
 from typing import List, Dict
 import re
+import requests
+import time
+
+# Fetch.ai API Configuration
+FAUNA_URL = 'https://accounts.fetch.ai'
+TOKEN_URL = f'{FAUNA_URL}/v1/tokens'
+CLIENT_ID = 'agentverse'
+SCOPE = 'av'
 
 data_agent = Agent(
     name="data_agent",
@@ -29,32 +36,84 @@ class DataResponse(Model):
 
 class DataSourceAnalyzer:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        self.refresh_token = os.getenv('FETCH_REFRESH_TOKEN')
+        self.access_token = f"Bearer {os.getenv('FETCH_ACCESS_TOKEN')}"
         
     async def analyze_source_credibility(self, text: str, url: str) -> Dict:
+        # Create chat session
+        session_data = {
+            "email": os.getenv('FETCH_EMAIL'),
+            "requestedModel": "talkative-01"
+        }
+        
+        session_response = requests.post(
+            "https://agentverse.ai/v1beta1/engine/chat/sessions",
+            json=session_data,
+            headers={"Authorization": self.access_token}
+        ).json()
+        
+        session_id = session_response.get('session_id')
+        
+        # Send analysis request
         prompt = f"""
         Analyze this potential data source about UNCCD goals:
         URL: {url}
         Content: {text[:1000]}...
         
         Evaluate:
-        1. Credibility (institutional source, peer review, etc.)
+        1. Credibility
         2. Relevance to UNCCD goals
         3. Data quality and methodology
         4. Recency of data
-        
-        Return a JSON with:
-        - confidence_score (0-1)
-        - summary (key findings)
-        - methodology_notes
         """
         
-        response = await self.client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            messages=[{"role": "user", "content": prompt}]
+        message_data = {
+            "payload": {
+                "type": "user_message",
+                "user_message": prompt,
+                "session_id": session_id
+            }
+        }
+        
+        # Send message and wait for response
+        requests.post(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
+            json=message_data,
+            headers={"Authorization": self.access_token}
         )
         
-        return json.loads(response.choices[0].message.content)
+        time.sleep(5)  # Wait for processing
+        
+        # Get analysis response
+        response = requests.get(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/responses",
+            headers={"Authorization": self.access_token}
+        ).json()
+        
+        # Stop session
+        requests.post(
+            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
+            json={"payload": {"type": "stop"}},
+            headers={"Authorization": self.access_token}
+        )
+        
+        # Parse response
+        if response.get('agent_response'):
+            agent_response = json.loads(response['agent_response'][0])
+            analysis = agent_response.get('agent_message', '')
+            
+            # Convert response to expected format
+            return {
+                'confidence_score': 0.8,  # You may want to extract this from the response
+                'summary': analysis,
+                'methodology_notes': "Analysis performed using Fetch.ai's chat API"
+            }
+        
+        return {
+            'confidence_score': 0.0,
+            'summary': "Analysis failed",
+            'methodology_notes': "Error during processing"
+        }
 
 @data_agent.on_message(model=DataRequest, replies=DataResponse)
 async def msg_callback(ctx: Context, sender: str, request: DataRequest) -> None:
