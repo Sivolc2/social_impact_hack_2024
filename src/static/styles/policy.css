@@ -206,3 +206,25 @@
 .policy-header span {
     font-weight: 500;
 }
+
+.layer-controls {
+    margin-top: 15px;
+    padding: 10px;
+    border-top: 1px solid #eee;
+}
+
+.layer-toggle {
+    display: flex;
+    align-items: center;
+    margin: 5px 0;
+}
+
+.layer-toggle label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.layer-toggle input[type="checkbox"] {
+    margin-right: 8px;
+}

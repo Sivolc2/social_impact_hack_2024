@@ -1,14 +1,12 @@
 import geopandas as gpd
-import pandas as pd
 import h3
 import json
 import logging
 from pathlib import Path
-from datetime import datetime
 from shapely.geometry import shape, mapping
 from typing import Dict, Any
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def load_desert_data(geojson_path: str) -> gpd.GeoDataFrame:
@@ -17,13 +15,7 @@ def load_desert_data(geojson_path: str) -> gpd.GeoDataFrame:
     
     try:
         gdf = gpd.read_file(geojson_path)
-        
-        # Convert relevant columns to appropriate types
-        if 'DI' in gdf.columns:
-            gdf['DI'] = pd.to_numeric(gdf['DI'], errors='coerce')
-        if 'DI2' in gdf.columns:
-            gdf['DI2'] = pd.to_numeric(gdf['DI2'], errors='coerce')
-            
+        logger.info(f"Loaded {len(gdf)} features")
         return gdf
     except Exception as e:
         logger.error(f"Error loading desert data: {e}")
@@ -33,110 +25,83 @@ def aggregate_by_h3(gdf: gpd.GeoDataFrame, resolution: int = 3) -> Dict[str, Any
     """Aggregate desert data by H3 cells"""
     logger.info(f"Aggregating data using H3 resolution {resolution}")
     
-    features = []
-    hexagon_data = {}
-    
-    # Debug info about input data
-    logger.debug(f"Input GeoDataFrame CRS: {gdf.crs}")
-    logger.debug(f"Number of input features: {len(gdf)}")
-    logger.debug(f"Geometry types: {gdf.geometry.geom_type.unique()}")
-    
-    # First convert to EPSG:4326 if not already
+    # Convert to EPSG:4326 if needed
     if gdf.crs != 'EPSG:4326':
         gdf = gdf.to_crs(epsg=4326)
-        logger.debug("Converted GeoDataFrame to EPSG:4326")
     
-    # Get Somalia boundary first
+    # Pre-filter with Somalia boundary
     from utils.geo_filter import load_country_boundary
     somalia_boundary = load_country_boundary('Somalia')
-    logger.debug(f"Loaded Somalia boundary: {somalia_boundary.wkt[:100]}...")
-    
-    # Ensure boundary is also in EPSG:4326
     somalia_gdf = gpd.GeoDataFrame(geometry=[somalia_boundary], crs='EPSG:4326')
-    
-    # Pre-filter the data to Somalia's boundary
     gdf = gpd.overlay(gdf, somalia_gdf, how='intersection')
-    logger.debug(f"Pre-filtered to {len(gdf)} features intersecting Somalia")
+    logger.info(f"Filtered to {len(gdf)} features intersecting Somalia")
     
-    # Process each geometry in the GeoDataFrame
+    # Collect all H3 cells
+    h3_cells = set()  # Use set to avoid duplicates
     for idx, row in gdf.iterrows():
-        geom = row.geometry
         try:
-            # Handle MultiPolygon vs Polygon
-            if geom.geom_type == 'MultiPolygon':
-                polygons = [p for p in geom.geoms]
-            else:
-                polygons = [geom]
+            # Convert polygon to GeoJSON format and extract coordinates
+            geojson = mapping(row.geometry)
+            coords = geojson['coordinates'][0]  # Get exterior ring coordinates
             
-            logger.debug(f"Processing feature {idx} with {len(polygons)} polygons")
+            # Get H3 cells for this polygon
+            cells = h3.polyfill_polygon(coords, resolution)
+            h3_cells.update(cells)
             
-            for poly in polygons:
-                # Get exterior coordinates and any interior (holes) coordinates
-                exterior_coords = [[coord[0], coord[1]] for coord in poly.exterior.coords[:-1]]  # Skip last point (duplicate)
-                interior_coords = []
-                for interior in poly.interiors:
-                    interior_coords.append([[coord[0], coord[1]] for coord in interior.coords[:-1]])
-                
-                # Create polygon in h3 format - note the nested array structure
-                h3_polygon = {
-                    'type': 'Polygon',
-                    'coordinates': [exterior_coords] + interior_coords
-                }
-                
-                try:
-                    # Get H3 cells covering this polygon
-                    h3_cells = h3.polygon_to_cells(h3_polygon, resolution)
-                    logger.debug(f"Generated {len(h3_cells)} H3 cells for polygon")
-                except Exception as e:
-                    logger.warning(f"Error generating H3 cells: {e}")
-                    logger.debug(f"Polygon coordinates: {h3_polygon}")
-                    continue
-                
-                for h3_index in h3_cells:
-                    # Get hexagon boundary
-                    boundary = h3.cell_to_boundary(h3_index)
-                    hex_polygon = gpd.GeoDataFrame(
-                        geometry=[gpd.GeoSeries([shape({
-                            'type': 'Polygon',
-                            'coordinates': [[[vertex[1], vertex[0]] for vertex in boundary]]
-                        })])[0]], 
-                        crs='EPSG:4326'
-                    )
-                    
-                    # Intersect with original data
-                    intersection = gpd.overlay(gdf, hex_polygon, how='intersection')
-                    
-                    if not intersection.empty:
-                        # Calculate metrics for the hexagon
-                        metrics = {
-                            'desertification_index': float(intersection['DI'].mean()) if 'DI' in intersection.columns else None,
-                            'desertification_index2': float(intersection['DI2'].mean()) if 'DI2' in intersection.columns else None,
-                            'land_suitability': intersection['LU_Suitabi'].mode().iloc[0] if 'LU_Suitabi' in intersection.columns else None,
-                            'degradation_type': intersection['Deg_Type_1'].mode().iloc[0] if 'Deg_Type_1' in intersection.columns else None,
-                            'degradation_condition': intersection['Deg_Condit'].mode().iloc[0] if 'Deg_Condit' in intersection.columns else None,
-                            'area_km2': float(intersection.geometry.area.sum() / 1_000_000)  # Convert to km²
-                        }
-                        
-                        # Create feature
-                        feature = {
-                            'type': 'Feature',
-                            'geometry': {
-                                'type': 'Polygon',
-                                'coordinates': [[[vertex[1], vertex[0]] for vertex in boundary]]
-                            },
-                            'properties': {
-                                'h3_index': h3_index,
-                                'metrics': metrics
-                            }
-                        }
-                        features.append(feature)
-                    
         except Exception as e:
-            logger.warning(f"Error processing geometry {idx}: {str(e)}")
-            logger.debug(f"Problematic geometry: {geom.wkt[:100]}...")
+            logger.warning(f"Error processing feature {idx}: {e}")
+            logger.debug(f"Geometry type: {row.geometry.geom_type}")
             continue
     
-    logger.info(f"Generated {len(features)} H3 features")
+    logger.info(f"Generated {len(h3_cells)} unique H3 cells")
+    
+    # Create features for each H3 cell
+    features = []
+    for h3_index in h3_cells:
+        try:
+            # Get hexagon boundary
+            boundary = h3.cell_to_boundary(h3_index)
+            hex_polygon = gpd.GeoDataFrame(
+                geometry=[gpd.GeoSeries([shape({
+                    'type': 'Polygon',
+                    'coordinates': [[[vertex[1], vertex[0]] for vertex in boundary]]
+                })])[0]], 
+                crs='EPSG:4326'
+            )
+            
+            # Intersect with original data
+            intersection = gpd.overlay(gdf, hex_polygon, how='intersection')
+            
+            if not intersection.empty:
+                # Calculate metrics for the hexagon
+                metrics = {
+                    'desertification_index': float(intersection['DI'].mean()) if 'DI' in intersection.columns else None,
+                    'desertification_index2': float(intersection['DI2'].mean()) if 'DI2' in intersection.columns else None,
+                    'land_suitability': intersection['LU_Suitabi'].mode().iloc[0] if 'LU_Suitabi' in intersection.columns else None,
+                    'degradation_type': intersection['Deg_Type_1'].mode().iloc[0] if 'Deg_Type_1' in intersection.columns else None,
+                    'degradation_condition': intersection['Deg_Condit'].mode().iloc[0] if 'Deg_Condit' in intersection.columns else None,
+                    'area_km2': float(intersection.geometry.area.sum() / 1_000_000)  # Convert to km²
+                }
+                
+                # Create feature
+                feature = {
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'Polygon',
+                        'coordinates': [[[vertex[1], vertex[0]] for vertex in boundary]]
+                    },
+                    'properties': {
+                        'h3_index': h3_index,
+                        'metrics': metrics
+                    }
+                }
+                features.append(feature)
+                
+        except Exception as e:
+            logger.warning(f"Error processing H3 cell {h3_index}: {e}")
+            continue
+    
+    logger.info(f"Created {len(features)} features with metrics")
     
     # Create GeoJSON structure
     geojson = {

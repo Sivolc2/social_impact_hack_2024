@@ -294,6 +294,17 @@ def get_all_datasets_map():
             'message': str(e)
         }), 500
 
+# Add this new route
+@app.route('/api/datasets/deserts')
+def get_deserts():
+    try:
+        data = dataset_service.get_deserts_data()
+        if data:
+            return jsonify(data)
+        return jsonify({'error': 'Desert data not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.debug = True
     app.run(host='0.0.0.0', port=9002)

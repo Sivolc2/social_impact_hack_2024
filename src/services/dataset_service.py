@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from .map_service import MapService
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,7 @@ class DatasetService:
         self.map_service = MapService()
         self.available_datasets = self._load_available_datasets()
         self.geojson_cache = {}
+        self.base_path = 'data'
 
     def _load_available_datasets(self) -> Dict[str, Any]:
         """Load available datasets from knowledge base"""
@@ -83,3 +85,17 @@ class DatasetService:
         except Exception as e:
             logger.error(f"Error loading dataset {dataset_id}: {e}")
             return {"error": f"Error loading dataset: {str(e)}"}
+
+    def get_deserts_data(self):
+        """Load the desert/land degradation GeoJSON data."""
+        try:
+            filepath = os.path.join(self.base_path, 'deserts_somalia_raw.geojson')
+            if not os.path.exists(filepath):
+                return None
+                
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            return data
+        except Exception as e:
+            print(f"Error loading desert data: {e}")
+            return None

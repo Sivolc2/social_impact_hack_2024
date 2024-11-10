@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Map initialized successfully');
             
             initializeMapLayers(map);
+            initializeDesertLayer(map);
             
             // Load initial data
             loadInitialData();
@@ -129,7 +130,7 @@ function initializeMapLayers(map) {
                             ['get', 'color'],
                             'rgba(0,0,0,0)'
                         ],
-                        'fill-opacity': 0  // Start completely transparent
+                        'fill-opacity': 0.9  // Increased from 0.7 to 0.9 (20% darker)
                     }
                 });
             }
@@ -148,62 +149,90 @@ function initializeMapLayers(map) {
                 });
             }
 
-            // Add mouseover events with better error handling
+            // Update mouseover events with better error handling
             map.on('mousemove', 'h3-hexagons-fill', (e) => {
                 if (e.features.length > 0) {
                     const feature = e.features[0];
+                    const landDegFeatures = map.queryRenderedFeatures(e.point, { 
+                        layers: ['land-degradation-fill'] 
+                    });
+                    
+                    let popupContent = '<div class="popup-content">';
+                    
+                    // Add H3 metrics if available
                     if (feature.properties?.metrics) {
                         let metrics;
                         try {
                             metrics = typeof feature.properties.metrics === 'string' 
                                 ? JSON.parse(feature.properties.metrics) 
                                 : feature.properties.metrics;
+
+                            popupContent += `
+                                <h4>Conflict Data (${feature.properties.year || 'N/A'})</h4>
+                                <div class="popup-metrics-section">
+                                    ${Object.entries(metrics).map(([key, value]) => {
+                                        // Format the metric name
+                                        const formattedName = key.split('_')
+                                            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                            .join(' ');
+                                        // Format the value
+                                        const formattedValue = typeof value === 'number' 
+                                            ? value.toFixed(2) 
+                                            : value;
+                                        return `
+                                            <div class="popup-metric">
+                                                <span class="popup-metric-label">${formattedName}:</span>
+                                                <span class="popup-metric-value">${formattedValue}</span>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>`;
                         } catch (error) {
                             console.error('Error parsing metrics:', error);
-                            return;
                         }
-
-                        // Format metrics safely
-                        const formatValue = (value) => {
-                            if (value === undefined || value === null) return 'N/A';
-                            const num = parseFloat(value);
-                            return isNaN(num) ? 'N/A' : num.toFixed(2);
-                        };
-
-                        // Create popup content with safe value formatting
-                        const popupContent = `
-                            <div class="popup-content">
-                                <h4>Year: ${feature.properties.year || 'N/A'}</h4>
-                                ${Object.entries(metrics).map(([key, value]) => `
-                                    <div class="popup-metric">
-                                        <span class="popup-metric-label">${key.split('_').map(word => 
-                                            word.charAt(0).toUpperCase() + word.slice(1)
-                                        ).join(' ')}:</span>
-                                        <span class="popup-metric-value">${formatValue(value)}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `;
-
-                        popup
-                            .setLngLat(e.lngLat)
-                            .setHTML(popupContent)
-                            .addTo(map);
                     }
+
+                    // Add land degradation data if available
+                    if (landDegFeatures.length > 0) {
+                        const landDegFeature = landDegFeatures[0];
+                        popupContent += `
+                            <h4>Land Degradation</h4>
+                            <div class="popup-metrics-section">
+                                <div class="popup-metric">
+                                    <span class="popup-metric-label">Type:</span>
+                                    <span class="popup-metric-value">${landDegFeature.properties.Deg_Type_1 || 'N/A'}</span>
+                                </div>
+                                <div class="popup-metric">
+                                    <span class="popup-metric-label">Condition:</span>
+                                    <span class="popup-metric-value">${landDegFeature.properties.Deg_Condit || 'N/A'}</span>
+                                </div>
+                                <div class="popup-metric">
+                                    <span class="popup-metric-label">Land Use:</span>
+                                    <span class="popup-metric-value">${landDegFeature.properties.LU_Suitabi || 'N/A'}</span>
+                                </div>
+                            </div>`;
+                    }
+
+                    popupContent += '</div>';
+
+                    // Update popup
+                    popup
+                        .setLngLat(e.lngLat)
+                        .setHTML(popupContent)
+                        .addTo(map);
                 }
             });
 
+            // Remove the separate land degradation mouseover events
+            // since we're handling both layers in the hexagon mouseover
+
             map.on('mouseleave', 'h3-hexagons-fill', () => {
                 popup.remove();
+                map.getCanvas().style.cursor = '';
             });
 
-            // Add hover effect
             map.on('mouseenter', 'h3-hexagons-fill', () => {
                 map.getCanvas().style.cursor = 'pointer';
-            });
-
-            map.on('mouseleave', 'h3-hexagons-fill', () => {
-                map.getCanvas().style.cursor = '';
             });
 
             mapInitialized = true;
@@ -217,16 +246,16 @@ function initializeMapLayers(map) {
 // Add these helper functions at the top of the file
 function getMetricColorScale(metric) {
     const colorScales = {
-        incident_count: ['#ffffcc', '#800026'],      // Yellow to Dark Red
-        deaths_total: ['#ffffcc', '#800026'],        // Yellow to Dark Red
-        deaths_civilians: ['#ffffcc', '#800026'],    // Yellow to Dark Red
-        deaths_military: ['#ffffcc', '#800026'],     // Yellow to Dark Red
-        land_degradation: ['#2ecc71', '#e74c3c'],    // Green to Red
-        soil_organic_carbon: ['#fff7fb', '#023858'], // White to Dark Blue
-        vegetation_cover: ['#ffffe5', '#004529'],    // Light Yellow to Dark Green
-        biodiversity_index: ['#ffffcc', '#800026']   // Yellow to Dark Red
+        incident_count: ['#ffffd4', '#ff0000'],      // Light yellow to Bright Red
+        deaths_total: ['#ffffd4', '#ff0000'],        // Light yellow to Bright Red
+        deaths_civilians: ['#ffffd4', '#ff0000'],    // Light yellow to Bright Red
+        deaths_military: ['#ffffd4', '#ff0000'],     // Light yellow to Bright Red
+        land_degradation: ['#ffffd4', '#ff0000'],    // Light yellow to Bright Red
+        soil_organic_carbon: ['#ffffd4', '#ff0000'], // Light yellow to Bright Red
+        vegetation_cover: ['#ffffd4', '#ff0000'],    // Light yellow to Bright Red
+        biodiversity_index: ['#ffffd4', '#ff0000']   // Light yellow to Bright Red
     };
-    return colorScales[metric] || ['#ffffcc', '#800026']; // Default color scale
+    return colorScales[metric] || ['#ffffd4', '#ff0000']; // Default color scale
 }
 
 function getMetricMaxValue(metric) {
@@ -520,76 +549,87 @@ function updateMapMetric(metricId) {
         return;
     }
 
-    // If no metric selected, clear the map
-    if (!metricId) {
-        const source = map.getSource('h3-hexagons');
-        if (source) {
-            source.setData({
-                type: 'FeatureCollection',
-                features: []
-            });
-        }
-        return;
+    // Get current year from timeline
+    const currentYear = parseInt(document.querySelector('.timeline-year')?.textContent) || 2015;
+
+    // Set fixed maximum values for death-related metrics
+    const fixedMaxValues = {
+        'deaths_total': 300,
+        'deaths_civilians': 300,
+        'deaths_military': 300
+    };
+
+    // Calculate min/max values
+    let minValue = 0;  // Start from 0 for deaths
+    let maxValue = fixedMaxValues[metricId] || -Infinity;
+
+    // If not a death-related metric, calculate max value dynamically
+    if (!fixedMaxValues[metricId]) {
+        window.currentData.features.forEach(feature => {
+            const featureYear = parseInt(feature.properties.year);
+            if (featureYear === currentYear) {
+                const metrics = typeof feature.properties.metrics === 'string' 
+                    ? JSON.parse(feature.properties.metrics) 
+                    : feature.properties.metrics;
+                
+                if (metrics && metrics[metricId] !== undefined) {
+                    const value = parseFloat(metrics[metricId]);
+                    if (!isNaN(value)) {
+                        maxValue = Math.max(maxValue, value);
+                    }
+                }
+            }
+        });
     }
 
-    // Calculate min/max values for the metric
-    let minValue = Infinity;
-    let maxValue = -Infinity;
+    // Update features with colors
+    const displayFeatures = window.currentData.features.map(feature => {
+        const featureYear = parseInt(feature.properties.year);
+        if (featureYear !== currentYear) {
+            return {
+                ...feature,
+                properties: {
+                    ...feature.properties,
+                    visible: false,
+                    color: 'rgba(0,0,0,0)'
+                }
+            };
+        }
 
-    // Filter features that have the selected metric and calculate min/max
-    const validFeatures = window.currentData.features.filter(feature => {
         const metrics = typeof feature.properties.metrics === 'string' 
             ? JSON.parse(feature.properties.metrics) 
             : feature.properties.metrics;
         
         if (metrics && metrics[metricId] !== undefined) {
             const value = parseFloat(metrics[metricId]);
-            if (!isNaN(value)) {
-                minValue = Math.min(minValue, value);
-                maxValue = Math.max(maxValue, value);
-                return true;
-            }
-        }
-        return false;
-    });
+            const normalizedValue = (maxValue === minValue) 
+                ? 0.5 
+                : Math.min(1, (value - minValue) / (maxValue - minValue));  // Clamp to 1
+            
+            const [startColor, endColor] = getMetricColorScale(metricId);
+            const color = interpolateColor(startColor, endColor, normalizedValue);
 
-    // If no valid features found, clear the map
-    if (validFeatures.length === 0) {
-        const source = map.getSource('h3-hexagons');
-        if (source) {
-            source.setData({
-                type: 'FeatureCollection',
-                features: []
-            });
+            return {
+                ...feature,
+                properties: {
+                    ...feature.properties,
+                    visible: true,
+                    color: color
+                }
+            };
         }
-        return;
-    }
-
-    // Update features with colors for the selected metric
-    const displayFeatures = validFeatures.map(feature => {
-        const metrics = typeof feature.properties.metrics === 'string' 
-            ? JSON.parse(feature.properties.metrics) 
-            : feature.properties.metrics;
-        
-        const value = parseFloat(metrics[metricId]);
-        const normalizedValue = (maxValue === minValue) 
-            ? 0.5 
-            : (value - minValue) / (maxValue - minValue);
-        
-        const [startColor, endColor] = getMetricColorScale(metricId);
-        const color = interpolateColor(startColor, endColor, normalizedValue);
 
         return {
             ...feature,
             properties: {
                 ...feature.properties,
-                visible: true,
-                color: color
+                visible: false,
+                color: 'rgba(0,0,0,0)'
             }
         };
     });
 
-    // Update the source with only the relevant features
+    // Update the source
     const source = map.getSource('h3-hexagons');
     if (source) {
         source.setData({
@@ -598,19 +638,17 @@ function updateMapMetric(metricId) {
         });
     }
 
-    // Update layer opacity to make features visible
+    // Update layer opacity
     if (map.getLayer('h3-hexagons-fill')) {
-        map.setPaintProperty('h3-hexagons-fill', 'fill-opacity', 0.7);
+        map.setPaintProperty('h3-hexagons-fill', 'fill-opacity', 1.0);
     }
     if (map.getLayer('h3-hexagons-outline')) {
-        map.setPaintProperty('h3-hexagons-outline', 'line-opacity', 0.5);
+        map.setPaintProperty('h3-hexagons-outline', 'line-opacity', 0.7);
     }
 
-    // Update legend
+    // Update legend with actual min/max values
     updateLegend(metricId, minValue, maxValue);
-}
-
-// Add helper function for color interpolation
+}// Add helper function for color interpolation
 function interpolateColor(startColor, endColor, value) {
     // Ensure value is between 0 and 1
     const ratio = Math.min(Math.max(value || 0, 0), 1);
@@ -763,3 +801,86 @@ function downloadGeoJSON(data, filename) {
         console.error('Error exporting GeoJSON:', error);
     }
 }
+
+function initializeDesertLayer(map) {
+    // Add source for desert/land degradation data
+    if (!map.getSource('land-degradation')) {
+        map.addSource('land-degradation', {
+            type: 'geojson',
+            data: '/api/datasets/deserts' // We'll need to add this endpoint in the backend
+        });
+    }
+
+    // Add fill layer
+    if (!map.getLayer('land-degradation-fill')) {
+        map.addLayer({
+            'id': 'land-degradation-fill',
+            'type': 'fill',
+            'source': 'land-degradation',
+            'layout': {},
+            'paint': {
+                'fill-color': [
+                    'match',
+                    ['get', 'Deg_Condit'],
+                    'Slight', '#ffd700',
+                    'Moderate', '#ffa500',
+                    'Severe', '#ff4500',
+                    '#ccc' // default color
+                ],
+                'fill-opacity': 0.4
+            }
+        });
+    }
+
+    // Add outline layer
+    if (!map.getLayer('land-degradation-outline')) {
+        map.addLayer({
+            'id': 'land-degradation-outline',
+            'type': 'line',
+            'source': 'land-degradation',
+            'layout': {},
+            'paint': {
+                'line-color': '#000',
+                'line-width': 1,
+                'line-opacity': 0.5
+            }
+        });
+    }
+
+    // Add hover effect and popup for land degradation layer
+    map.on('mouseenter', 'land-degradation-fill', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        
+        if (e.features.length > 0) {
+            const feature = e.features[0];
+            const popupContent = `
+                <div class="popup-content">
+                    <h4>Land Degradation Info</h4>
+                    <div class="popup-metric">
+                        <span class="popup-metric-label">Type:</span>
+                        <span class="popup-metric-value">${feature.properties.Deg_Type_1 || 'N/A'}</span>
+                    </div>
+                    <div class="popup-metric">
+                        <span class="popup-metric-label">Condition:</span>
+                        <span class="popup-metric-value">${feature.properties.Deg_Condit || 'N/A'}</span>
+                    </div>
+                    <div class="popup-metric">
+                        <span class="popup-metric-label">Land Use:</span>
+                        <span class="popup-metric-value">${feature.properties.LU_Suitabi || 'N/A'}</span>
+                    </div>
+                </div>
+            `;
+
+            popup
+                .setLngLat(e.lngLat)
+                .setHTML(popupContent)
+                .addTo(map);
+        }
+    });
+
+    map.on('mouseleave', 'land-degradation-fill', () => {
+        map.getCanvas().style.cursor = '';
+        popup.remove();
+    });
+}
+

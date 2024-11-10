@@ -56,4 +56,39 @@
 .mapboxgl-ctrl-bottom-right,
 .mapboxgl-ctrl-bottom-left {
     display: none !important;
+}
+
+.popup-content {
+    padding: 10px;
+    max-width: 300px;
+}
+
+.popup-content h4 {
+    margin: 0 0 8px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #eee;
+    color: #333;
+}
+
+.popup-metrics-section {
+    margin-bottom: 12px;
+}
+
+.popup-metric {
+    display: flex;
+    justify-content: space-between;
+    margin: 4px 0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.popup-metric-label {
+    font-weight: bold;
+    margin-right: 10px;
+    color: #666;
+}
+
+.popup-metric-value {
+    text-align: right;
+    color: #333;
 } 

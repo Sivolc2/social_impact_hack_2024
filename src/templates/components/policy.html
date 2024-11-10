@@ -9,6 +9,14 @@
         <div id="metric-description"></div>
         <div id="metric-unit"></div>
     </div>
+    <div class="layer-controls">
+        <div class="layer-toggle">
+            <label>
+                <input type="checkbox" id="land-degradation-toggle" checked>
+                Show Land Degradation
+            </label>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -285,4 +293,12 @@ function updateMapMetric(metricId) {
     // Update metric info
     updateMetricInfo(metricId);
 }
+
+document.getElementById('land-degradation-toggle').addEventListener('change', function(e) {
+    const visibility = e.target.checked ? 'visible' : 'none';
+    if (window.map) {
+        window.map.setLayoutProperty('land-degradation-fill', 'visibility', visibility);
+        window.map.setLayoutProperty('land-degradation-outline', 'visibility', visibility);
+    }
+});
 </script> 
