@@ -10,6 +10,9 @@ import random
 import numpy as np
 from datetime import datetime, timedelta
 import logging
+import rasterio
+from rasterio.warp import transform_bounds
+from typing import Tuple, List
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -17,12 +20,12 @@ logger = logging.getLogger(__name__)
 class MapService:
     def __init__(self):
         self.policy_service = PolicyService()
-        # Define default view state
+        # Define default view state with reduced pitch
         self.default_view_state = {
             "latitude": 8.7832,
             "longitude": 34.5085,
             "zoom": 4,
-            "pitch": 45,
+            "pitch": 0,  # Changed from 45 to 0 for top-down view
             "bearing": 0
         }
         # Updated color scheme for better visualization of improvement
@@ -246,3 +249,184 @@ class MapService:
                 'type': 'FeatureCollection',
                 'features': []
             }
+
+    def tiff_to_h3_cells(self, tiff_path: str, resolution: int = 5) -> dict:
+        """Convert a TIFF file to H3 cells with values"""
+        try:
+            with rasterio.open(tiff_path) as dataset:
+                logger.info(f"TIFF CRS: {dataset.crs}")
+                bounds = dataset.bounds  # Store bounds here
+                logger.info(f"TIFF Bounds: {bounds}")
+                logger.info(f"TIFF Transform: {dataset.transform}")
+
+                # Read the data and get the transformation parameters
+                data = dataset.read(1)  # Read first band
+                height, width = data.shape
+                
+                # Create arrays for row/col coordinates
+                rows, cols = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
+                
+                # Transform pixel coordinates to lat/lon
+                xs, ys = rasterio.transform.xy(dataset.transform, rows.flatten(), cols.flatten())
+                xs = np.array(xs).reshape((height, width))
+                ys = np.array(ys).reshape((height, width))
+                
+                # If the CRS is not WGS84, transform coordinates
+                if str(dataset.crs).upper() != 'EPSG:4326':
+                    from rasterio.warp import transform
+                    from pyproj import CRS
+                    
+                    logger.info(f"Converting from {dataset.crs} to EPSG:4326")
+                    
+                    # Create transformer
+                    src_crs = dataset.crs
+                    dst_crs = CRS.from_epsg(4326)
+                    
+                    # Transform bounds to WGS84
+                    bounds_lngs, bounds_lats = transform(src_crs, dst_crs, 
+                        [bounds.left, bounds.right], 
+                        [bounds.bottom, bounds.top])
+                    bounds = rasterio.coords.BoundingBox(
+                        left=min(bounds_lngs),
+                        bottom=min(bounds_lats),
+                        right=max(bounds_lngs),
+                        top=max(bounds_lats)
+                    )
+                    
+                    # Flatten coordinate arrays for transformation
+                    xs_flat = xs.flatten()
+                    ys_flat = ys.flatten()
+                    
+                    # Transform coordinates
+                    lngs, lats = transform(src_crs, dst_crs, xs_flat, ys_flat)
+                    
+                    # Reshape back to grid
+                    lngs = np.array(lngs).reshape((height, width))
+                    lats = np.array(lats).reshape((height, width))
+                    
+                    logger.info(f"Transformed bounds: {bounds}")
+                else:
+                    lngs, lats = xs, ys
+                
+                # Track processed H3 indices to avoid duplicates
+                processed_h3_cells = {}
+                
+                features = []
+                for i in range(height):
+                    for j in range(width):
+                        if data[i, j] != dataset.nodata and not np.isnan(data[i, j]):
+                            # Get coordinates for this pixel
+                            lng, lat = float(lngs[i, j]), float(lats[i, j])
+                            
+                            # Skip if coordinates are invalid
+                            if not (-180 <= lng <= 180 and -90 <= lat <= 90):
+                                logger.warning(f"Invalid coordinates: lat={lat}, lng={lng}")
+                                continue
+                            
+                            # Get H3 cell for this point
+                            try:
+                                h3_index = h3.latlng_to_cell(lat, lng, resolution)
+                            except Exception as e:
+                                logger.warning(f"Failed to create H3 cell for lat={lat}, lng={lng}: {e}")
+                                continue
+                            
+                            # Skip if we've already processed this cell
+                            if h3_index in processed_h3_cells:
+                                processed_h3_cells[h3_index]['count'] += 1
+                                processed_h3_cells[h3_index]['sum'] += data[i, j]
+                                continue
+                            
+                            # Store the initial value for this cell
+                            processed_h3_cells[h3_index] = {
+                                'sum': data[i, j],
+                                'count': 1
+                            }
+                            
+                            # Get cell boundary
+                            boundary = h3.cell_to_boundary(h3_index)
+                            coordinates = [[[vertex[1], vertex[0]] for vertex in boundary]]
+                            coordinates[0].append(coordinates[0][0])  # Close the polygon
+                            
+                            feature = {
+                                'type': 'Feature',
+                                'geometry': {
+                                    'type': 'Polygon',
+                                    'coordinates': coordinates
+                                },
+                                'properties': {
+                                    'h3_index': h3_index,
+                                    'value': float(data[i, j]),
+                                    'raw_value': float(data[i, j])
+                                }
+                            }
+                            features.append(feature)
+                
+                if not features:
+                    logger.warning("No valid features generated from TIFF file")
+                    return {
+                        'type': 'FeatureCollection',
+                        'features': [],
+                        'metadata': {
+                            'error': 'No valid features could be generated from the TIFF file'
+                        }
+                    }
+                
+                # Calculate final values and colors for each cell
+                min_val = min(cell['sum'] / cell['count'] for cell in processed_h3_cells.values())
+                max_val = max(cell['sum'] / cell['count'] for cell in processed_h3_cells.values())
+                value_range = max_val - min_val if max_val != min_val else 1.0
+                
+                for feature in features:
+                    h3_index = feature['properties']['h3_index']
+                    cell_data = processed_h3_cells[h3_index]
+                    avg_value = cell_data['sum'] / cell_data['count']
+                    
+                    # Normalize value and get color
+                    normalized_value = (avg_value - min_val) / value_range
+                    color = self._value_to_color(normalized_value)
+                    
+                    # Update feature properties
+                    feature['properties'].update({
+                        'value': avg_value,
+                        'normalized_value': normalized_value,
+                        'color': color
+                    })
+                
+                geojson = {
+                    'type': 'FeatureCollection',
+                    'features': features,
+                    'metadata': {
+                        'min_value': float(min_val),
+                        'max_value': float(max_val),
+                        'cell_count': len(features),
+                        'crs': str(dataset.crs),
+                        'bounds': {
+                            'left': float(bounds.left),
+                            'right': float(bounds.right),
+                            'top': float(bounds.top),
+                            'bottom': float(bounds.bottom)
+                        }
+                    }
+                }
+                
+                logger.info(f"Processed TIFF to {len(features)} H3 cells")
+                logger.info(f"Metadata: {geojson['metadata']}")
+                return geojson
+                
+        except Exception as e:
+            logger.error(f"Error processing TIFF file: {str(e)}", exc_info=True)
+            raise e
+
+    def _value_to_color(self, normalized_value: float) -> str:
+        """Convert a normalized value (0-1) to a color hex string"""
+        # You can customize this color scheme
+        colors = [
+            '#d32f2f',  # red for low values
+            '#f57c00',  # orange
+            '#ffd700',  # yellow
+            '#7cb342',  # light green
+            '#2e7d32'   # dark green for high values
+        ]
+        
+        index = min(int(normalized_value * len(colors)), len(colors) - 1)
+        return colors[index]

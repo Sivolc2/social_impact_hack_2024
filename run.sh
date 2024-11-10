@@ -10,6 +10,7 @@ conda activate the_green
 
 # Install dependencies
 pip install -e .
+pip install -r requirements.txt
 
 # Set the Flask app environment variable
 export FLASK_APP=src/app.py

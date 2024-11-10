@@ -18,6 +18,6 @@ setup(
         "openai",
         "aiohttp",
         "uagents",
-        "pydantic"
+        "pydantic",
     ]
 ) 

@@ -16,3 +16,6 @@ pip install -e . --no-cache-dir
 # Add the project root to PYTHONPATH
 echo "export PYTHONPATH=$PYTHONPATH:$(pwd)" >> ~/.bashrc
 echo "export PYTHONPATH=$PYTHONPATH:$(pwd)" >> ~/.zshrc
+
+source ~/.env
+source ./.secrets

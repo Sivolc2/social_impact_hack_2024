@@ -1,12 +1,29 @@
-from flask import Flask, render_template, jsonify, url_for, request
+from flask import Flask, render_template, jsonify, url_for, request, Response
 from flask_cors import CORS
 from src.services.map_service import MapService
 from src.services.dataset_service import DatasetService
-from src.services.data_agent import data_agent, DataRequest, DataResponse
+from src.services.data_agent import DataAgent
 from dotenv import load_dotenv
 import os
 from datetime import datetime
 import traceback
+from werkzeug.utils import secure_filename
+import json
+import logging
+from pydantic import BaseModel
+import asyncio
+from functools import wraps
+
+# Define the models that were previously imported
+class DataRequest(BaseModel):
+    question: str
+    context: dict = None
+
+class DataResponse(BaseModel):
+    data_summary: str
+    source_url: str
+    confidence_score: float
+    methodology_notes: str = ""
 
 # Load environment variables
 load_dotenv()
@@ -20,17 +37,64 @@ CORS(app)
 map_service = MapService()
 dataset_service = DatasetService()
 
-def detect_category(question: str) -> str:
-    question = question.lower()
-    
-    if any(word in question for word in ['land', 'soil', 'degradation', 'erosion']):
-        return 'land_degradation'
-    elif any(word in question for word in ['drought', 'water', 'rain', 'precipitation']):
-        return 'drought'
-    elif any(word in question for word in ['population', 'people', 'community', 'demographic']):
-        return 'population'
-    
-    return 'land_degradation'
+logging.basicConfig(level=logging.DEBUG)
+
+# Helper function to run async code in Flask
+def async_route(f):
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        return asyncio.run(f(*args, **kwargs))
+    return wrapped
+
+# Initialize the agent
+try:
+    agent = DataAgent()
+    asyncio.run(agent.initialize())
+    logging.info("Data agent initialized successfully")
+except Exception as e:
+    logging.error(f"Failed to initialize DataAgent: {str(e)}")
+    raise
+
+@app.route('/chat', methods=['POST'])
+@async_route
+async def chat():
+    try:
+        data = request.json
+        question = data.get('question')
+        context = data.get('context', {})
+        
+        logging.debug(f"Processing chat query: {question}")
+        
+        # Process query through the agent
+        response = await agent.process_query(question, context)
+        
+        logging.debug(f"Got response: {response}")
+        
+        return jsonify({
+            'insights': [
+                response['response'],
+                f"Confidence Score: {response['confidence']}"
+            ],
+            'recommendations': [
+                response.get('metadata', {}).get('source', 'No source available'),
+                response.get('status', 'No additional information')
+            ]
+        })
+    except Exception as e:
+        logging.error(f"Chat error: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({
+            'insights': [f"Error: {str(e)}"],
+            'recommendations': ["Please try again with a different question."]
+        }), 500
+
+@app.route('/api/export-data', methods=['GET'])
+@async_route
+async def export_data():
+    try:
+        recommendations = await agent.get_dataset_recommendations()
+        return jsonify(recommendations)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/')
 def index():
@@ -62,67 +126,6 @@ def get_policy_data():
     except Exception as e:
         app.logger.error(f"Error generating policy data: {str(e)}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
-
-@app.route('/chat', methods=['POST'])
-def chat():
-    try:
-        data = request.json
-        question = data.get('question')
-        
-        # Determine if it's a standardization question
-        if any(word in question.lower() for word in ['standard', 'normalize', 'scale']):
-            response = DataResponse(
-                data_summary="The data visualization uses several standardization methods:",
-                source_url="https://www.unccd.int/land-and-life/land-degradation-neutrality/overview",
-                confidence_score=0.95,
-                methodology_notes="""
-                1. Land Degradation data: Normalized to a 0-1 scale where:
-                   - 0 represents severely degraded land
-                   - 0.5 represents stable land
-                   - 1 represents improving land conditions
-                   
-                2. Drought Risk data: Standardized using a z-score method:
-                   - Values are compared to historical averages
-                   - Standard deviations from mean indicate severity
-                   
-                3. Population Impact: Per capita normalization:
-                   - Raw numbers converted to percentages
-                   - Adjusted for population density
-                """
-            ).dict()
-        else:
-            # Default response for other questions
-            response = DataResponse(
-                data_summary=f"Your question: {question}\nPlease ask about specific aspects of land degradation, drought risk, or population impact.",
-                source_url="",
-                confidence_score=0.8,
-                methodology_notes="Try asking about data standardization, specific regions, or trends over time."
-            ).dict()
-        
-        return jsonify({
-            'insights': [
-                response['data_summary'],
-                f"Confidence Score: {response['confidence_score']}"
-            ],
-            'recommendations': [
-                response['methodology_notes'],
-                f"Source: {response['source_url']}"
-            ]
-        })
-    except Exception as e:
-        app.logger.error(f"Chat error: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({
-            'insights': [f"Error: {str(e)}"],
-            'recommendations': ["Please try again with a different question."]
-        }), 500
-
-@app.route('/api/export-data', methods=['GET'])
-def export_data():
-    try:
-        data = data_agent.get_current_data()
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.debug = True

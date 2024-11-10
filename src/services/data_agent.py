@@ -1,209 +1,201 @@
-from uagents import Agent, Context
-from pydantic import BaseModel
-from dataclasses import dataclass
-import aiohttp
+from typing import Dict, List, Optional
+from .vector_store import VectorStore
+from pathlib import Path
 import json
-from bs4 import BeautifulSoup
+import logging
+import asyncio
+import anthropic
+from anthropic import Anthropic
 import os
-from typing import List, Dict
-import re
-import requests
-import time
 
-# Fetch.ai API Configuration
-FAUNA_URL = 'https://accounts.fetch.ai'
-TOKEN_URL = f'{FAUNA_URL}/v1/tokens'
-CLIENT_ID = 'agentverse'
-SCOPE = 'av'
+logger = logging.getLogger(__name__)
 
-data_agent = Agent(
-    name="data_agent",
-    seed="randomseedidk",
-    port=8000,
-    endpoint="http://127.0.0.1:8000/data_request"
-)
-
-class DataRequest(BaseModel):
-    msg: str
-    data_category: str  # 'land_degradation', 'drought', or 'population'
-
-class DataResponse(BaseModel):
-    data_summary: str
-    source_url: str
-    confidence_score: float
-    methodology_notes: str
-
-class DataSourceAnalyzer:
+class DataAgent:
     def __init__(self):
-        self.refresh_token = os.getenv('FETCH_REFRESH_TOKEN')
-        self.access_token = f"Bearer {os.getenv('FETCH_ACCESS_TOKEN')}"
+        """Initialize the data agent with vector store and Claude"""
+        self.vector_store = VectorStore()
+        self.conversation_history: List[Dict] = []
+        self.confidence_threshold = 0.7
         
-    async def analyze_source_credibility(self, text: str, url: str) -> Dict:
-        # Create chat session
-        session_data = {
-            "email": os.getenv('FETCH_EMAIL'),
-            "requestedModel": "talkative-01"
-        }
+        # Initialize Claude
+        api_key = os.getenv('ANTHROPIC_API_KEY')
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
+        self.client = Anthropic(api_key=api_key)
         
-        session_response = requests.post(
-            "https://agentverse.ai/v1beta1/engine/chat/sessions",
-            json=session_data,
-            headers={"Authorization": self.access_token}
-        ).json()
+        # System prompt for environmental data analysis
+        self.system_prompt = """You are an expert environmental data analyst assistant. 
+        Your role is to help users understand environmental data, particularly focusing on:
+        - Land degradation and soil health
+        - Forest coverage and deforestation
+        - Climate impact assessment
+        - Environmental policy analysis
         
-        session_id = session_response.get('session_id')
-        
-        # Send analysis request
-        prompt = f"""
-        Analyze this potential data source about UNCCD goals:
-        URL: {url}
-        Content: {text[:1000]}...
-        
-        Evaluate:
-        1. Credibility
-        2. Relevance to UNCCD goals
-        3. Data quality and methodology
-        4. Recency of data
+        When responding:
+        1. Be precise with data interpretations
+        2. Cite sources when available
+        3. Explain confidence levels in your analysis
+        4. Suggest related datasets when relevant
+        5. Use scientific terminology appropriately
         """
+
+    async def initialize(self, knowledge_base_path: str = "data/knowledge_base.json"):
+        """Initialize the agent with knowledge base"""
+        try:
+            await self.load_knowledge_base(knowledge_base_path)
+            logger.info("Data agent initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize data agent: {str(e)}")
+            raise
+
+    async def load_knowledge_base(self, knowledge_base_path: str):
+        """Load and index the knowledge base"""
+        path = Path(knowledge_base_path)
         
-        message_data = {
-            "payload": {
-                "type": "user_message",
-                "user_message": prompt,
-                "session_id": session_id
-            }
-        }
-        
-        # Send message and wait for response
-        requests.post(
-            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
-            json=message_data,
-            headers={"Authorization": self.access_token}
-        )
-        
-        time.sleep(5)  # Wait for processing
-        
-        # Get analysis response
-        response = requests.get(
-            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/responses",
-            headers={"Authorization": self.access_token}
-        ).json()
-        
-        # Stop session
-        requests.post(
-            f"https://agentverse.ai/v1beta1/engine/chat/sessions/{session_id}/submit",
-            json={"payload": {"type": "stop"}},
-            headers={"Authorization": self.access_token}
-        )
-        
-        # Parse response
-        if response.get('agent_response'):
-            agent_response = json.loads(response['agent_response'][0])
-            analysis = agent_response.get('agent_message', '')
+        if not path.exists():
+            logger.warning(f"Knowledge base not found at {path}")
+            return
             
-            # Convert response to expected format
-            return {
-                'confidence_score': 0.8,  # You may want to extract this from the response
-                'summary': analysis,
-                'methodology_notes': "Analysis performed using Fetch.ai's chat API"
+        with open(path, 'r') as f:
+            documents = json.load(f)
+            
+        formatted_docs = [
+            {
+                'content': doc['text'],
+                'metadata': {
+                    'source': doc.get('source', ''),
+                    'category': doc.get('category', ''),
+                    'dataset_id': doc.get('dataset_id', '')
+                }
             }
-        
-        return {
-            'confidence_score': 0.0,
-            'summary': "Analysis failed",
-            'methodology_notes': "Error during processing"
-        }
-
-@data_agent.on_message(model=DataRequest, replies=DataResponse)
-async def msg_callback(ctx: Context, sender: str, request: DataRequest) -> None:
-    ctx.logger.info(f"Received request for {request.data_category} data: {request.msg}")
-    
-    # Initialize analyzer
-    analyzer = DataSourceAnalyzer()
-    
-    # Define search queries based on category
-    search_queries = {
-        'land_degradation': [
-            'site:unccd.int land degradation neutrality data',
-            'site:fao.org land degradation statistics',
-            'site:worldbank.org land degradation indicators'
-        ],
-        'drought': [
-            'site:unccd.int drought risk data',
-            'site:drought.gov global drought data',
-            'site:fao.org drought impact statistics'
-        ],
-        'population': [
-            'site:unccd.int population affected desertification',
-            'site:un.org demographics desertification impact',
-            'site:worldbank.org population displacement environmental'
+            for doc in documents
         ]
-    }
-    
-    best_source = None
-    highest_confidence = 0
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            # Search relevant URLs
-            for query in search_queries.get(request.data_category, []):
-                search_url = f"https://www.google.com/search?q={query}"
-                async with session.get(search_url) as response:
-                    soup = BeautifulSoup(await response.text(), 'html.parser')
-                    urls = [a['href'] for a in soup.find_all('a', href=True) 
-                           if any(domain in a['href'] for domain in 
-                                ['.gov', '.int', '.org', '.edu'])]
+        
+        self.vector_store.add_documents(formatted_docs)
+
+    def _format_context(self, documents: List[Dict]) -> str:
+        """Format retrieved documents into context for Claude"""
+        context = "Relevant information from our database:\n\n"
+        for i, doc in enumerate(documents, 1):
+            content = doc['document']['content']
+            source = doc['document']['metadata'].get('source', 'Unknown source')
+            confidence = doc['score']
+            context += f"{i}. {content}\n"
+            context += f"   Source: {source}\n"
+            context += f"   Confidence: {confidence:.2f}\n\n"
+        return context
+
+    async def process_query(self, 
+                          query: str, 
+                          context: Optional[Dict] = None) -> Dict:
+        """
+        Process a user query using Claude and vector store
+        """
+        # Get relevant documents
+        similar_docs = self.vector_store.similarity_search(query, k=3)
+        
+        # Filter by confidence threshold
+        confident_docs = [
+            doc for doc in similar_docs 
+            if doc['score'] >= self.confidence_threshold
+        ]
+        
+        # Format context from retrieved documents
+        doc_context = self._format_context(confident_docs)
+        
+        try:
+            logger.debug(f"Sending query to Claude: {query}")
+            logger.debug(f"With context: {doc_context}")
+            
+            # Get response from Claude with correct message format
+            response = self.client.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=1024,
+                system=self.system_prompt,  # System prompt goes here instead
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""Context: {doc_context}
+
+Question: {query}
+
+Please provide a detailed response that:
+1. Directly answers the question
+2. References relevant data points from the context
+3. Explains your confidence level
+4. Suggests related areas to explore"""
+                    }
+                ]
+            )
+            
+            logger.debug(f"Got response from Claude: {response}")
+            
+            claude_response = response.content[0].text
+            
+            logger.debug(f"Extracted text: {claude_response}")
+            
+            # Format final response
+            result = {
+                'response': claude_response,
+                'confidence': confident_docs[0]['score'] if confident_docs else 0.5,
+                'supporting_docs': confident_docs,
+                'status': 'success',
+                'metadata': {
+                    'source': confident_docs[0]['document']['metadata'].get('source') if confident_docs else None,
+                    'category': confident_docs[0]['document']['metadata'].get('category') if confident_docs else None,
+                    'dataset_id': confident_docs[0]['document']['metadata'].get('dataset_id') if confident_docs else None
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting response from Claude: {str(e)}")
+            result = {
+                'response': "I apologize, but I encountered an error processing your request.",
+                'confidence': 0.0,
+                'supporting_docs': [],
+                'status': 'error',
+                'metadata': {}
+            }
+
+        # Update conversation history
+        self.conversation_history.append({
+            'query': query,
+            'response': result,
+            'context': context
+        })
+
+        return result
+
+    async def get_dataset_recommendations(self) -> List[Dict]:
+        """Get dataset recommendations based on conversation history"""
+        if not self.conversation_history:
+            return []
+            
+        # Get recent queries
+        recent_queries = [
+            conv['query'] 
+            for conv in self.conversation_history[-3:]
+        ]
+        
+        # Search for relevant datasets
+        recommendations = []
+        for query in recent_queries:
+            docs = self.vector_store.similarity_search(query, k=2)
+            for doc in docs:
+                dataset_id = doc['document']['metadata'].get('dataset_id')
+                if dataset_id and doc['score'] > 0.6:
+                    recommendations.append({
+                        'dataset_id': dataset_id,
+                        'relevance_score': doc['score'],
+                        'description': doc['document']['content']
+                    })
                     
-                    # Analyze each URL
-                    for url in urls[:3]:  # Analyze top 3 results
-                        async with session.get(url) as page_response:
-                            content = await page_response.text()
-                            soup = BeautifulSoup(content, 'html.parser')
-                            text = soup.get_text()
-                            
-                            # Analyze source credibility and relevance
-                            analysis = await analyzer.analyze_source_credibility(text, url)
-                            
-                            if analysis['confidence_score'] > highest_confidence:
-                                best_source = {
-                                    'url': url,
-                                    'analysis': analysis
-                                }
-                                highest_confidence = analysis['confidence_score']
-    
-        if best_source:
-            return DataResponse(
-                data_summary=best_source['analysis']['summary'],
-                source_url=best_source['url'],
-                confidence_score=best_source['analysis']['confidence_score'],
-                methodology_notes=best_source['analysis']['methodology_notes']
-            )
-        else:
-            return DataResponse(
-                data_summary="No reliable data sources found",
-                source_url="",
-                confidence_score=0.0,
-                methodology_notes="Search failed to find credible sources"
-            )
-                
-    except Exception as e:
-        ctx.logger.error(f"Error processing request: {str(e)}")
-        return DataResponse(
-            data_summary=f"Error: {str(e)}",
-            source_url="",
-            confidence_score=0.0,
-            methodology_notes="Error during processing"
-        )
+        return recommendations
 
-def get_current_data(self):
-    """
-    Returns the currently loaded map data in a format suitable for export
-    """
-    # Return the current data in a structured format
-    # This will depend on how you're storing/managing your data
-    if hasattr(self, 'current_data'):
-        return self.current_data
-    return None
+    def get_conversation_history(self) -> List[Dict]:
+        """Return the conversation history"""
+        return self.conversation_history
 
-if __name__ == "__main__":
-    data_agent.run()
+    async def clear_conversation(self):
+        """Clear the conversation history"""
+        self.conversation_history = []

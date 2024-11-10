@@ -139,4 +139,25 @@
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     background: rgba(255, 255, 255, 0.9);
-} 
+}
+
+/* Style the control container */
+.mapboxgl-ctrl-group {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
+}
+
+/* Position the control group in the top-right */
+.mapboxgl-ctrl-top-right .mapboxgl-ctrl-group {
+    margin: 10px 10px 0 0 !important;
+}
+
+/* Ensure the container doesn't interfere with other controls */
+.mapboxgl-control-container {
+    pointer-events: none;
+}
+
+.mapboxgl-control-container > * {
+    pointer-events: auto;
+}
