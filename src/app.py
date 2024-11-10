@@ -50,7 +50,7 @@ def async_route(f):
 # Initialize agents
 try:
     data_agent = DataAgent()
-    asyncio.run(data_agent.initialize("data/knowledge_base.txt"))
+    asyncio.run(data_agent.initialize("data/knowledge_base.json"))
     analysis_agent = AnalysisAgent()
     logging.info("Agents initialized successfully")
 except Exception as e:

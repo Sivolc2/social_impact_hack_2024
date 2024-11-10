@@ -12,3 +12,7 @@ Agent Workflow:
 3. Ask about areas of interest
 	1. LLM highlights areas of interest on map, changing zoom and map selection
 	2. Provide rational/context for a region
+
+Running instructions:
+1. Add key to .secrets
+2. bash run.sh
