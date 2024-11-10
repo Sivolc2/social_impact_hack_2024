@@ -1,12 +1,20 @@
 #!/bin/bash
 
-# Install the package in development mode if not already installed
-pip3 install -e .
+# Check if conda environment exists, create if it doesn't
+if ! conda env list | grep -q "the_green"; then
+    conda create -n the_green python=3.11 -y
+fi
+
+# Activate conda environment
+conda activate the_green
+
+# Install dependencies
+pip install -e .
 
 # Set the Flask app environment variable
-export FLASK_APP=src.app
+export FLASK_APP=src/app.py
 export FLASK_ENV=development
 
 # Run the Flask application
-flask run
+python -m flask run --port=9001
 

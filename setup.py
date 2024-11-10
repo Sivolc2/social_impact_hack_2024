@@ -10,7 +10,14 @@ setup(
         "pandas",
         "geopandas",
         "numpy",
-        "h3"
-        # "fetch-ai-uagents"
+        "h3",
+        "flask-cors",
+        "python-dotenv",
+        "requests",
+        "beautifulsoup4",
+        "openai",
+        "aiohttp",
+        "uagents",
+        "pydantic"
     ]
 ) 

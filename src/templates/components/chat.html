@@ -39,8 +39,9 @@ async function sendMessage() {
     messagesDiv.appendChild(loadingDiv);
 
     try {
-        // Send request to router agent
-        const response = await fetch('http://localhost:8002/query', {
+        // Use window.location.origin to get the current server URL
+        const serverUrl = window.location.origin;
+        const response = await fetch(`${serverUrl}/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -50,6 +51,10 @@ async function sendMessage() {
                 question: message
             })
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
         const data = await response.json();
         
@@ -73,12 +78,20 @@ async function sendMessage() {
         // Remove loading message
         messagesDiv.removeChild(loadingDiv);
         
-        // Show error message
+        // Show more specific error message
+        let errorMessage = 'Sorry, I encountered an error. ';
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage += 'Cannot connect to the server. Please make sure the server is running.';
+        } else {
+            errorMessage += 'Please try again.';
+        }
+        
         messagesDiv.innerHTML += `
             <div class="message agent-message error">
-                Sorry, I encountered an error. Please try again.
+                ${errorMessage}
             </div>
         `;
+        console.error('Chat error:', error);
     }
 
     // Scroll to bottom

@@ -1,4 +1,5 @@
-from uagents import Agent, Context, Model
+from uagents import Agent, Context
+from pydantic import BaseModel
 from dataclasses import dataclass
 import aiohttp
 import json
@@ -22,13 +23,11 @@ data_agent = Agent(
     endpoint="http://127.0.0.1:8000/data_request"
 )
 
-@dataclass
-class DataRequest(Model):
+class DataRequest(BaseModel):
     msg: str
     data_category: str  # 'land_degradation', 'drought', or 'population'
 
-@dataclass
-class DataResponse(Model):
+class DataResponse(BaseModel):
     data_summary: str
     source_url: str
     confidence_score: float
