@@ -54,7 +54,14 @@ document.addEventListener('DOMContentLoaded', function() {
             updateTimelineLabels();
             timeRangeInitialized = true;
 
-            // Set initial year
+            // Reset animation state
+            isPlaying = false;
+            if (playButton) {
+                playButton.querySelector('.play-icon').textContent = '▶';
+            }
+            
+            // Set initial slider position
+            slider.value = 0;
             filterAndDisplayYear(timeRange.start);
         }
     }
@@ -62,10 +69,12 @@ document.addEventListener('DOMContentLoaded', function() {
     function getYearFromSliderValue(value) {
         if (availableYears.length === 0) return timeRange.start;
         
+        // Calculate the index based on the slider value
         const index = Math.min(
             Math.floor((value / 100) * (availableYears.length - 1)),
             availableYears.length - 1
         );
+        
         return availableYears[index];
     }
 
@@ -75,10 +84,15 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Convert year to number for strict comparison
+        const targetYear = parseInt(year);
+        console.log(`Filtering for year: ${targetYear}`);
+
         // Filter features for the selected year
-        const filteredFeatures = currentData.features.filter(feature => 
-            feature.properties.year === year
-        );
+        const filteredFeatures = currentData.features.filter(feature => {
+            const featureYear = parseInt(feature.properties.year);
+            return featureYear === targetYear;
+        });
 
         // Create new GeoJSON with filtered features
         const filteredData = {
@@ -87,20 +101,24 @@ document.addEventListener('DOMContentLoaded', function() {
             metadata: currentData.metadata
         };
 
-        console.log(`Filtered to ${filteredFeatures.length} features for year ${year}`);
+        console.log(`Filtered to ${filteredFeatures.length} features for year ${targetYear}`);
 
         // Update the map source directly
         const source = window.map.getSource('h3-hexagons');
         if (source) {
             source.setData(filteredData);
+        } else {
+            console.error('Map source not found: h3-hexagons');
         }
     }
 
     function animate() {
         if (!isPlaying) return;
 
-        const value = parseInt(slider.value);
-        const currentYear = getYearFromSliderValue(value);
+        const currentValue = parseInt(slider.value);
+        const currentYear = getYearFromSliderValue(currentValue);
+        
+        console.log(`Animating: Current year ${currentYear}, Value ${currentValue}`);
         
         // Check if we've reached the end
         if (currentYear >= timeRange.end) {
@@ -114,14 +132,21 @@ document.addEventListener('DOMContentLoaded', function() {
         // Calculate next value
         const currentIndex = availableYears.indexOf(currentYear);
         const nextIndex = currentIndex + 1;
+        
         if (nextIndex < availableYears.length) {
+            // Smoothly update slider value
             const nextValue = (nextIndex / (availableYears.length - 1)) * 100;
             slider.value = nextValue;
-            filterAndDisplayYear(availableYears[nextIndex]);
             
+            // Display the next year
+            const nextYear = availableYears[nextIndex];
+            console.log(`Advancing to year ${nextYear}`);
+            filterAndDisplayYear(nextYear);
+            
+            // Schedule next frame
             setTimeout(() => {
                 if (isPlaying) {
-                    animationFrame = requestAnimationFrame(animate);
+                    requestAnimationFrame(animate);
                 }
             }, currentSpeed);
         }
@@ -151,13 +176,53 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle new data loading
     window.addEventListener('dataLoaded', function(e) {
         if (e.detail?.data) {
+            console.log('New data received:', e.detail.data);
             currentData = e.detail.data;
             timeRangeInitialized = false;
+            
+            // Initialize timeline with new data
             updateTimeRangeFromData(currentData);
             
             // Reset to start
             slider.value = 0;
             filterAndDisplayYear(timeRange.start);
+            
+            // Log available years for debugging
+            console.log('Available years after data load:', availableYears);
         }
     });
+
+    // Add speed control functionality
+    const speedButtons = document.querySelectorAll('.speed-button');
+    const customSpeedInput = document.getElementById('custom-speed');
+    
+    function updateSpeed(newSpeed) {
+        currentSpeed = 1000 / newSpeed; // Convert multiplier to milliseconds
+        console.log(`Animation speed updated: ${newSpeed}x (${currentSpeed}ms)`);
+    }
+
+    // Add speed button listeners
+    speedButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons
+            speedButtons.forEach(btn => btn.classList.remove('active'));
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            const speed = parseInt(this.dataset.speed);
+            updateSpeed(speed);
+        });
+    });
+
+    // Add custom speed input listener
+    if (customSpeedInput) {
+        customSpeedInput.addEventListener('change', function() {
+            const speed = parseInt(this.value);
+            if (!isNaN(speed) && speed > 0) {
+                // Remove active class from all preset buttons
+                speedButtons.forEach(btn => btn.classList.remove('active'));
+                updateSpeed(speed);
+            }
+        });
+    }
 });
