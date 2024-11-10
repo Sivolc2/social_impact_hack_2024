@@ -8,7 +8,7 @@ from typing import List, Tuple
 import requests
 from typing import Optional
 
-class VectorStore:
+class VectorDB:
     def __init__(self):
         # Initialize the sentence transformer model
         self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
@@ -69,7 +69,7 @@ class Completions:
 # Example usage:
 if __name__ == "__main__":
     # Initialize vector store
-    vector_store = VectorStore()
+    vector_store = VectorDB()
     
     # Add some example texts
     texts = [
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     # Query the vector store
     query = "What is AI?"
     results = vector_store.search(query)
-    
+        
     # Print results
     for text, distance in results:
         print(f"Text: {text}")
