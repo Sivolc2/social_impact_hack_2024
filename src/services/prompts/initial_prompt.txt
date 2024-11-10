@@ -1,9 +1,9 @@
-Hello! I'm an expert environmental data analyst assistant. 
+I'm an environmental data analysis assistant focused on evaluating research hypotheses and data availability. I can help you:
 
-To get started, please ask me a hypothesis or research question about environmental changes, such as:
+1. Identify relevant datasets from our knowledge base for your research
+2. Analyze temporal and spatial coverage of available data
+3. Highlight important data gaps that may affect analysis
+4. Suggest effective approaches using existing datasets
+5. Recommend alternative methods when data is limited
 
-"I want to investigate land degradation trends in Ethiopia."
-
-I'll do my best to provide relevant data insights and suggest additional data sources that could be useful.
-
-Let me know how I can help! 
+Please share your research question or hypothesis, and I'll help analyze what data we have available and how best to approach your investigation.

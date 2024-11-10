@@ -9,7 +9,7 @@
     </div>
     
     <div class="chat-input-container">
-        <input type="text" id="chat-input" class="chat-input" placeholder="Ask about environmental data...">
+        <input type="text" id="user-input" class="chat-input" placeholder="Ask about environmental data...">
         <div class="button-group">
             <button onclick="sendMessage()" class="chat-send-button">Send</button>
             <button onclick="sendToMap()" class="map-send-button">Send To Map</button>
@@ -18,9 +18,43 @@
 </div>
 
 <script>
+// Define a safe markdown renderer function
+function createMarkdownRenderer() {
+    if (typeof marked === 'function') {
+        // Configure marked options
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false
+        });
+        return function(text) {
+            try {
+                return marked(text);
+            } catch (e) {
+                console.error('Markdown parsing error:', e);
+                return text;
+            }
+        };
+    }
+    // Fallback to simple text rendering
+    return function(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>');
+    };
+}
+
+// Initialize the markdown renderer
+const markdownRenderer = createMarkdownRenderer();
+
 let messageQueue = [];
 let isProcessing = false;
 let currentMode = 'data';
+let isUserScrolling = false;
+let shouldAutoScroll = true;
 
 function addMessageToChat(role, message, summaryTable = '') {
     const messagesContainer = document.getElementById('chat-messages');
@@ -49,17 +83,15 @@ function addMessageToChat(role, message, summaryTable = '') {
 }
 
 function getInitialPrompt() {
-    const welcomeMessage = `Hello! I'm an expert environmental data analyst assistant. 
-
-To get started, please ask me a hypothesis or research question about environmental changes, such as:
-
-"I want to investigate land degradation trends in agricultural areas."
-
-I'll do my best to provide relevant data insights and suggest additional data sources that could be useful.
-
-Let me know how I can help!`;
-    
-    addMessageToChat('assistant', welcomeMessage);
+    fetch('/api/initial-prompt')
+        .then(response => response.json())
+        .then(data => {
+            addMessageToChat('assistant', data.prompt);
+        })
+        .catch(error => {
+            console.error('Error fetching initial prompt:', error);
+            addMessageToChat('assistant', 'Hello! I\'m an expert environmental data analyst assistant. How can I help you today?');
+        });
 }
 
 function handleUserMessage(message) {
@@ -70,62 +102,123 @@ function handleUserMessage(message) {
     processHypothesis(message);
 }
 
-async function sendMessage() {
-    const input = document.getElementById('chat-input');
-    const message = input.value.trim();
+function appendMessage(role, content) {
+    const messagesContainer = document.getElementById('chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `chat-message ${role}-message`;
     
-    if (!message) return;
+    // Create message content container
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
     
-    // Add user message
-    addMessageToChat('user', message);
-    
-    // Show loading indicator
-    const loadingDiv = document.createElement('div');
-    loadingDiv.className = 'chat-message loading-message';
-    loadingDiv.innerHTML = '<div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>';
-    document.getElementById('chat-messages').appendChild(loadingDiv);
-    
-    try {
-        const endpoint = '/chat';  // Use single endpoint
-        
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                question: message,
-                mode: currentMode  // Send current mode to backend
-            })
-        });
-        
-        const data = await response.json();
-        console.log('Response from server:', data);
-        
-        // Remove loading indicator
-        loadingDiv.remove();
-        
-        // Add AI response with summary table only if in data mode and table exists
-        if (currentMode === 'data' && data.summary_table) {
-            console.log('Summary table found:', data.summary_table);
-            addMessageToChat('assistant', data.response, data.summary_table);
-        } else {
-            // In analysis mode or no summary table, just show response
-            addMessageToChat('assistant', data.response);
-        }
-        
-    } catch (error) {
-        console.error('Error:', error);
-        loadingDiv.remove();
-        addMessageToChat('error', 'Sorry, there was an error processing your request.');
+    // Handle content based on role
+    if (role === 'assistant') {
+        contentDiv.innerHTML = markdownRenderer(content || '');
+    } else {
+        contentDiv.textContent = content || '';
     }
     
-    // Clear input
-    input.value = '';
+    messageDiv.appendChild(contentDiv);
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom(role === 'user'); // Force scroll for user messages
+}
+
+function sendMessage() {
+    const userInput = document.getElementById('user-input').value;
+    if (!userInput.trim()) return;
+    
+    // Add user message to chat
+    appendMessage('user', userInput);
+    document.getElementById('user-input').value = '';
+    
+    // Get all previous messages
+    const chatMessages = document.getElementById('chat-messages');
+    const messages = Array.from(chatMessages.children).map(msg => ({
+        role: msg.classList.contains('user-message') ? 'user' : 
+              msg.classList.contains('assistant-message') ? 'assistant' : 'system',
+        content: msg.textContent
+    }));
+    
+    // Create EventSource for streaming
+    fetch('/chat', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            message: userInput,
+            history: messages,
+            mode: currentMode  // Include current mode in request
+        })
+    })
+    .then(response => {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let assistantMessage = '';
+        
+        function readStream() {
+            reader.read().then(({done, value}) => {
+                if (done) {
+                    return;
+                }
+                
+                try {
+                    const chunk = decoder.decode(value);
+                    // Split the chunk into individual SSE messages
+                    const messages = chunk.split('\n\n');
+                    
+                    messages.forEach(message => {
+                        if (message.trim().startsWith('data: ')) {
+                            const jsonStr = message.replace('data: ', '').trim();
+                            try {
+                                const data = JSON.parse(jsonStr);
+                                if (data.chunk) {
+                                    assistantMessage += data.chunk;
+                                    updateOrCreateAssistantMessage(assistantMessage);
+                                }
+                            } catch (e) {
+                                console.error('JSON parse error:', e, 'for string:', jsonStr);
+                            }
+                        }
+                    });
+                    
+                    readStream();
+                } catch (error) {
+                    console.error('Stream reading error:', error);
+                    appendMessage('error', 'Error reading response stream');
+                }
+            }).catch(error => {
+                console.error('Stream promise error:', error);
+                appendMessage('error', 'Error processing response');
+            });
+        }
+        
+        readStream();
+    })
+    .catch(error => {
+        console.error('Fetch error:', error);
+        appendMessage('error', 'Sorry, there was an error processing your message.');
+    });
+}
+
+function updateOrCreateAssistantMessage(content) {
+    const chatMessages = document.querySelector('.chat-messages');
+    let lastMessage = chatMessages.lastElementChild;
+    
+    if (lastMessage && lastMessage.classList.contains('assistant-message')) {
+        const contentDiv = lastMessage.querySelector('.message-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = markdownRenderer(content || '');
+            scrollToBottom();
+        }
+    } else {
+        appendMessage('assistant', content);
+        scrollToBottom();
+    }
 }
 
 // Add this event listener to handle Enter key press
-document.getElementById('chat-input').addEventListener('keypress', (e) => {
+document.getElementById('user-input').addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
@@ -185,8 +278,12 @@ async function processHypothesis(hypothesis) {
 
 // Call the getInitialPrompt function when the page loads
 window.addEventListener('DOMContentLoaded', () => {
-    getInitialPrompt();
+    const currentMode = document.querySelector('.toggle-button.active')?.dataset.mode;
+    if (currentMode === 'data' || !currentMode) {
+        getInitialPrompt();
+    }
     initializeToggleButtons();
+    setupScrollListener();
 });
 
 function initializeToggleButtons() {
@@ -199,14 +296,17 @@ function initializeToggleButtons() {
             currentMode = button.dataset.mode;
             
             // Update placeholder text based on mode
-            const chatInput = document.getElementById('chat-input');
+            const chatInput = document.getElementById('user-input');
             if (currentMode === 'data') {
                 chatInput.placeholder = 'Ask about environmental data...';
+                // Clear messages and load initial prompt for data mode
+                document.getElementById('chat-messages').innerHTML = '';
+                getInitialPrompt();
             } else {
                 chatInput.placeholder = 'Ask for analysis of the selected region...';
                 // Clear any existing messages when switching to analysis mode
                 document.getElementById('chat-messages').innerHTML = '';
-                addMessageToChat('assistant', 'Switched to analysis mode. How can I help analyze the selected region?');
+                addMessageToChat('assistant', 'Hello! I\'m an expert environmental data analyst assistant. How can I help analyze your selected region?');
             }
         });
     });
@@ -229,7 +329,7 @@ async function sendToMap() {
         chatMessages.appendChild(loadingDiv);
         
         // Also include current input if it exists
-        const currentInput = document.getElementById('chat-input').value.trim();
+        const currentInput = document.getElementById('user-input').value.trim();
         if (currentInput) {
             messages.push({
                 role: 'user',
@@ -258,20 +358,53 @@ async function sendToMap() {
         loadingDiv.remove();
         
         // Clear input if there was any
-        document.getElementById('chat-input').value = '';
+        document.getElementById('user-input').value = '';
         
-        // Switch to analysis mode
+        // Add transition message
+        addMessageToChat('system', 'Query sent to map visualization. Switching to analysis mode...');
+        
+        // Wait a moment for the user to see the transition message
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Switch to analysis mode and clear previous conversation
         const analysisButton = document.querySelector('[data-mode="analysis"]');
         const toggleButtons = document.querySelectorAll('.toggle-button');
         toggleButtons.forEach(btn => btn.classList.remove('active'));
         analysisButton.classList.add('active');
+        currentMode = 'analysis';
         
-        // Add feedback message
-        addMessageToChat('system', 'Query sent to map visualization. Switching to analysis mode...');
+        // Clear chat messages and show initial analysis message
+        document.getElementById('chat-messages').innerHTML = '';
+        addMessageToChat('assistant', 'Hello! I\'m an expert environmental data analyst assistant. How can I help analyze your selected region?');
+        
+        // Update input placeholder
+        document.getElementById('user-input').placeholder = 'Ask for analysis of the selected region...';
         
     } catch (error) {
         console.error('Error sending to map:', error);
         addMessageToChat('error', 'Sorry, there was an error processing the conversation for map visualization. ' + error.message);
+    }
+}
+
+// Add this function to handle scroll detection
+function setupScrollListener() {
+    const messagesContainer = document.getElementById('chat-messages');
+    
+    // Detect when user scrolls up
+    messagesContainer.addEventListener('scroll', () => {
+        const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 100;
+        shouldAutoScroll = isAtBottom;
+    });
+}
+
+// Add this function to handle smooth scrolling
+function scrollToBottom(force = false) {
+    const messagesContainer = document.getElementById('chat-messages');
+    if (shouldAutoScroll || force) {
+        messagesContainer.scrollTo({
+            top: messagesContainer.scrollHeight,
+            behavior: 'smooth'
+        });
     }
 }
 </script>

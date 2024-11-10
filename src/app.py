@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, url_for, request, Response
+from flask import Flask, render_template, jsonify, url_for, request, Response, stream_with_context
 from flask_cors import CORS
 from src.services.map_service import MapService
 from src.services.dataset_service import DatasetService
@@ -47,60 +47,54 @@ def async_route(f):
         return asyncio.run(f(*args, **kwargs))
     return wrapped
 
-# Initialize the agent
+# Initialize agents
 try:
-    agent = DataAgent()
-    asyncio.run(agent.initialize("data/knowledge_base.txt"))
-    logging.info("Data agent initialized successfully")
+    data_agent = DataAgent()
+    asyncio.run(data_agent.initialize("data/knowledge_base.txt"))
+    analysis_agent = AnalysisAgent()
+    logging.info("Agents initialized successfully")
 except Exception as e:
-    logging.error(f"Failed to initialize DataAgent: {str(e)}")
+    logging.error(f"Failed to initialize agents: {str(e)}")
     raise
 
-# Initialize both agents
-data_agent = DataAgent()
-analysis_agent = AnalysisAgent()
-
 @app.route('/chat', methods=['POST'])
-@async_route
-async def chat():
-    try:
-        data = request.json
-        question = data.get('question')
-        mode = data.get('mode', 'data')  # Get the current mode
-        context = data.get('context', {})
-        
-        logging.debug(f"Processing {mode} query: {question}")
-        
-        if mode == 'data':
-            # Process query through data agent with summary
-            response = await agent.process_query(question, context, include_summary=True)
-        else:
-            # Process through analysis agent without summary
-            response = await analysis_agent.process_query(question, context)
-            # Convert analysis response to match expected format
-            response = {
-                'response': response.get('response', ''),
-                'summary_table': '',  # No summary table for analysis mode
-                'status': response.get('status', 'error')
-            }
-        
-        logging.debug(f"Got response: {response}")
-        
-        return jsonify(response)
-        
-    except Exception as e:
-        logging.error(f"Chat error: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({
-            'response': f"Error: {str(e)}",
-            'summary_table': '',
-            'status': 'error'
-        }), 500
+def chat():
+    data = request.json
+    user_message = data.get('message', '')
+    message_history = data.get('history', [])
+    current_mode = data.get('mode', 'data')  # Get the current mode from the request
+    
+    def generate():
+        try:
+            if current_mode == 'data':
+                # Use data agent for data mode
+                response = asyncio.run(data_agent.process_query(user_message))
+                yield f"data: {json.dumps({'chunk': response['response']})}\n\n"
+            else:
+                # Use analysis agent for analysis mode
+                for chunk in analysis_agent.stream_analysis(user_message):
+                    if chunk:  # Only yield non-empty chunks
+                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+        except Exception as e:
+            logger.error(f"Error in chat endpoint: {str(e)}")
+            yield f"data: {json.dumps({'chunk': f'Error: {str(e)}'})}\n\n"
+    
+    return Response(
+        stream_with_context(generate()), 
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'text/event-stream',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
 
 @app.route('/api/export-data', methods=['GET'])
 @async_route
 async def export_data():
     try:
-        recommendations = await agent.get_dataset_recommendations()
+        recommendations = await data_agent.get_dataset_recommendations()
         return jsonify(recommendations)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -144,7 +138,7 @@ def process_hypothesis():
     if not hypothesis:
         return jsonify({'error': 'No hypothesis provided'}), 400
         
-    result = agent.process_hypothesis_query(hypothesis)
+    result = data_agent.process_hypothesis_query(hypothesis)
     return jsonify(result)
 
 @app.route('/send-to-map', methods=['POST'])
@@ -187,6 +181,23 @@ async def handle_analysis():
             'status': 'error',
             'message': str(e)
         }), 500
+
+@app.route('/api/initial-prompt', methods=['GET'])
+def get_initial_prompt():
+    try:
+        prompts_dir = os.path.join(os.path.dirname(__file__), "services", "prompts")
+        with open(os.path.join(prompts_dir, "initial_prompt.txt"), "r") as f:
+            initial_prompt = f.read().strip()
+        return jsonify({
+            'status': 'success',
+            'prompt': initial_prompt
+        })
+    except Exception as e:
+        logger.error(f"Error loading initial prompt: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'prompt': 'Hello! I\'m an expert environmental data analyst assistant. How can I help you today?'
+        })
 
 if __name__ == '__main__':
     app.debug = True

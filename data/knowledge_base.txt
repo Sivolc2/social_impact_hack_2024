@@ -1,4 +1,4 @@
-Datasets available locally:
+Datasets available in knowledge base:
 
 [DATASET]
 ID: sdg-15-3-1
