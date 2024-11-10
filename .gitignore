@@ -1,4 +1,6 @@
 
+
+preprocessing/data/*
 *.tif
 *.vrt
 *.json
