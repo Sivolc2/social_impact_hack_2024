@@ -1,4 +1,6 @@
 
+*.tif
+*.vrt
 *.json
 *.geojson
 
