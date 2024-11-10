@@ -9,6 +9,7 @@
     font-size: 14px;
     z-index: 1;
     min-width: 150px;
+    transition: all 0.3s ease;
 }
 
 .legend-header {
@@ -26,6 +27,7 @@
     height: 12px;
     border-radius: 6px;
     background: linear-gradient(to right, #2ecc71, #e74c3c);
+    transition: background 0.3s ease;
 }
 
 .legend-labels {
@@ -33,4 +35,10 @@
     justify-content: space-between;
     font-size: 12px;
     color: #ffffff;
+}
+
+#legend-title,
+#legend-min,
+#legend-max {
+    transition: all 0.3s ease;
 } 

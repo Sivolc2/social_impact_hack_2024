@@ -4,7 +4,8 @@
     left: 50%;
     transform: translateX(-50%);
     width: 80%;
-    z-index: 15;
+    z-index: 2;
+    pointer-events: auto !important;
 }
 
 .timeline-controls {
@@ -15,6 +16,7 @@
     padding: 10px 20px;
     border-radius: 12px;
     backdrop-filter: blur(10px);
+    pointer-events: auto !important;
 }
 
 .timeline-button {
@@ -53,6 +55,7 @@
     background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
     outline: none;
+    pointer-events: auto !important;
 }
 
 .timeline-slider::-webkit-slider-thumb {
@@ -80,6 +83,7 @@
     display: flex;
     gap: 5px;
     margin-left: 10px;
+    pointer-events: auto !important;
 }
 
 .speed-button {

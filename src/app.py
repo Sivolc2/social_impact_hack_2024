@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, url_for, request, Response, stream_with_context
+from flask import Flask, render_template, jsonify, url_for, request, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 from src.services.map_service import MapService
 from src.services.dataset_service import DatasetService
@@ -145,27 +145,36 @@ def get_base_map():
     return jsonify(map_service.get_base_map_config())
 
 @app.route('/api/map/policy/water_management')
-def get_policy_data():
+def get_water_management_policy():
     try:
         timestamp_str = request.args.get('timestamp')
         if timestamp_str:
             timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
         else:
             timestamp = datetime.now()
-        
-        center_lat = 8.7832
-        center_lng = 34.5085
-        
-        data = map_service.generate_hexagon_data(center_lat, center_lng, timestamp)
-        
-        if not data or not data.get('features'):
-            app.logger.error("Generated data is empty or invalid")
-            return jsonify({"error": "Failed to generate valid data"}), 500
             
+        # Load the SDG sample data with the timestamp
+        data = map_service.load_sdg_sample()
+        
+        # Update the features with time-based patterns
+        if data and 'features' in data:
+            for feature in data['features']:
+                h3_index = feature['properties']['h3_index']
+                pattern = map_service._generate_cell_pattern(h3_index, timestamp)
+                
+                # Debug log for color values
+                logger.debug(f"Generated color for hex {h3_index}: {pattern.get('color')}")
+                
+                # Ensure color is present and valid
+                if 'color' not in pattern or not pattern['color'].startswith('#'):
+                    pattern['color'] = '#ff0000'  # Default to red if invalid
+                    
+                feature['properties'].update(pattern)
+        
         return jsonify(data)
     except Exception as e:
-        app.logger.error(f"Error generating policy data: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error in get_water_management_policy: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/process_hypothesis', methods=['POST'])
 def process_hypothesis():
@@ -181,13 +190,30 @@ def process_hypothesis():
 @app.route('/send-to-map', methods=['POST'])
 def send_to_map():
     try:
-        map_service = MapService()
+        # Get current timestamp or use default
+        current_time = datetime.now()
+        
         # Load the sample SDG data
         data = map_service.load_sdg_sample()
+        
+        # Update the features with time-based patterns
+        if data and 'features' in data:
+            for feature in data['features']:
+                h3_index = feature['properties']['h3_index']
+                pattern = map_service._generate_cell_pattern(h3_index, current_time)
+                
+                # Ensure color is present and valid
+                if 'color' not in pattern or not pattern['color'].startswith('#'):
+                    pattern['color'] = '#ff0000'  # Default to red if invalid
+                    
+                feature['properties'].update(pattern)
+        
+        logger.info(f"Sending map data with {len(data.get('features', []))} features")
         return jsonify(data)
     except Exception as e:
-        app.logger.error(f"Error in send_to_map: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        error_msg = f"Error in send_to_map: {str(e)}"
+        logger.error(error_msg)
+        return jsonify({'error': error_msg}), 500
 
 @app.route('/api/datasets/<dataset_id>/map', methods=['GET'])
 def get_dataset_map(dataset_id):
@@ -234,6 +260,24 @@ def get_initial_prompt():
             'prompt': 'Hello! I\'m an expert environmental data analyst assistant. How can I help you today?'
         })
 
+# Add this route to serve GeoJSON data
+@app.route('/api/dataset/sdg-15-3-1')
+def get_sdg_data():
+    try:
+        # Load the GeoJSON file
+        with open('data/sdg_panama_sample.geojson', 'r') as f:
+            data = json.load(f)
+        return jsonify(data)
+    except FileNotFoundError:
+        return jsonify({'error': 'Dataset not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Add a general route to serve data files
+@app.route('/data/<path:filename>')
+def serve_data(filename):
+    return send_from_directory('data', filename)
+
 if __name__ == '__main__':
     app.debug = True
-    app.run(host='0.0.0.0', port=9001)
+    app.run(host='0.0.0.0', port=9002)

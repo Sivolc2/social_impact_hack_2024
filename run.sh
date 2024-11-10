@@ -23,5 +23,5 @@ source .env
 source .secrets
 
 # Run the Flask application
-python -m flask run --port=9001
+python -m flask run --port=9002
 

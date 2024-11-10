@@ -10,6 +10,7 @@
 // Initialize map and popup globally
 let map;
 let popup;
+window.dataRequested = false;
 
 // Initialize the map when the page loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -33,8 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
         map = new mapboxgl.Map({
             container: 'map-container',
             style: 'mapbox://styles/mapbox/satellite-v9',
-            center: [15.2504, 25.3345],
-            zoom: 3.0,
+            center: [0, 20],  // Default center at a neutral location
+            zoom: 2,  // Default zoom showing most of the world
             pitch: 0,
             bearing: 0,
             projection: 'globe'
@@ -50,17 +51,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 'space-color': 'rgb(11, 11, 25)',
                 'star-intensity': 0.6
             });
-            
-            // Optional: Add custom star layer
-            map.addLayer({
-                'id': 'sky',
-                'type': 'sky',
-                'paint': {
-                    'sky-type': 'atmosphere',
-                    'sky-atmosphere-sun': [0.0, 90.0],
-                    'sky-atmosphere-sun-intensity': 15
-                }
-            });
         });
 
         // Initialize popup
@@ -75,12 +65,28 @@ document.addEventListener('DOMContentLoaded', () => {
             window.popup = popup;
             console.log('Map initialized successfully');
             
-            // Remove the San Francisco test movement
-            // map.easeTo({
-            //     center: [-122.4194, 37.7749],
-            //     zoom: 12,
-            //     duration: 2000
-            // });
+            // Add source for hexagons
+            map.addSource('h3-hexagons', {
+                type: 'geojson',
+                data: {
+                    type: 'FeatureCollection',
+                    features: []
+                }
+            });
+
+            // Add fill layer
+            map.addLayer({
+                'id': 'h3-hexagons-fill',
+                'type': 'fill',
+                'source': 'h3-hexagons',
+                'paint': {
+                    'fill-color': ['get', 'color'],
+                    'fill-opacity': 0.7
+                }
+            });
+            
+            // Dispatch event when map is ready
+            window.dispatchEvent(new Event('mapInitialized'));
         });
 
     } catch (error) {
@@ -92,114 +98,70 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Map update handler
-window.handleMapUpdate = function(geojsonData) {
+// Make loadMapData available globally
+window.loadMapData = async function(shouldZoom = true) {
     try {
-        console.log('Handling map update with data:', geojsonData);
+        // First try the API endpoint
+        let response = await fetch('/api/dataset/sdg-15-3-1');
         
-        if (!map || !geojsonData?.features) {
-            console.error('Map not initialized or invalid data');
-            return;
-        }
-
-        // Ensure metrics are properly structured
-        geojsonData.features.forEach(feature => {
-            if (typeof feature.properties.metrics === 'string') {
-                try {
-                    feature.properties.metrics = JSON.parse(feature.properties.metrics);
-                } catch (e) {
-                    console.error('Error parsing metrics:', e);
-                    feature.properties.metrics = {
-                        land_degradation: 0,
-                        soil_organic_carbon: 0,
-                        vegetation_cover: 0,
-                        biodiversity_index: 0
-                    };
-                }
+        // If API fails, try direct file access
+        if (!response.ok) {
+            console.warn('API endpoint not available, trying direct file access');
+            response = await fetch('/data/sdg_panama_sample.geojson');
+            
+            if (!response.ok) {
+                throw new Error(`Failed to load data: ${response.status} ${response.statusText}`);
             }
-        });
-
-        // Update or create the data source
-        if (!map.getSource('h3-data')) {
-            map.addSource('h3-data', {
-                type: 'geojson',
-                data: geojsonData
-            });
-        } else {
-            map.getSource('h3-data').setData(geojsonData);
+        }
+        
+        const data = await response.json();
+        
+        if (!data || !data.features) {
+            throw new Error('Invalid data format received');
         }
 
-        // Update the layer
-        const layerId = 'h3-layer';
-        if (map.getLayer(layerId)) {
-            map.removeLayer(layerId);
-        }
-
-        // Get current selected metric
-        const metricSelect = document.getElementById('metric-select');
-        const currentMetric = metricSelect ? metricSelect.value : 'land_degradation';
-
-        map.addLayer({
-            'id': layerId,
-            'type': 'fill',
-            'source': 'h3-data',
-            'paint': {
-                'fill-color': [
-                    'interpolate',
-                    ['linear'],
-                    ['get', currentMetric, ['get', 'metrics']],
-                    0, getMetricColorScale(currentMetric)[0],
-                    getMetricMaxValue(currentMetric), getMetricColorScale(currentMetric)[1]
-                ],
-                'fill-opacity': 0.7,
-                'fill-outline-color': '#ffffff'
+        // Update the source with the loaded data
+        map.getSource('h3-hexagons').setData(data);
+        
+        // Only zoom to bounds if shouldZoom is true
+        if (shouldZoom) {
+            if (data.metadata && data.metadata.bounds) {
+                const bounds = data.metadata.bounds;
+                map.fitBounds([
+                    [bounds.min_lng, bounds.min_lat],
+                    [bounds.max_lng, bounds.max_lat]
+                ], { padding: 50 });
+            } else {
+                // Fallback to Panama bounds if metadata is not available
+                map.fitBounds([
+                    [-83.0, 7.2],  // Southwest coordinates
+                    [-77.2, 9.6]   // Northeast coordinates
+                ], { padding: 50 });
             }
-        });
-
-        // Calculate bounds and animate map
-        const bounds = new mapboxgl.LngLatBounds();
-        geojsonData.features.forEach(feature => {
-            if (feature.geometry.type === 'Polygon') {
-                feature.geometry.coordinates[0].forEach(coord => {
-                    bounds.extend(coord);
-                });
-            }
-        });
-
-        if (!bounds.isEmpty()) {
-            map.fitBounds(bounds, {
-                padding: 50,
-                duration: 1600,
-                maxZoom: 10,
-                essential: true
-            });
         }
 
-        // Update metric display
-        if (typeof updateMetricInfo === 'function') {
-            updateMetricInfo(currentMetric);
+        console.log('Map data loaded successfully');
+        
+        // Trigger initial metric update
+        const defaultMetric = 'land_degradation';
+        if (window.updateMapMetric) {
+            window.updateMapMetric(defaultMetric);
         }
-
-        return true;
+        
     } catch (error) {
-        console.error('Error updating map:', error);
-        throw error;
+        console.error('Error loading map data:', error);
+        // Show error message on map
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer) {
+            mapContainer.innerHTML += `
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                           background: rgba(255,255,255,0.9); padding: 20px; border-radius: 8px;">
+                    <h3>Error Loading Data</h3>
+                    <p>${error.message}</p>
+                </div>`;
+        }
     }
-};
-
-// Add a test function to the window object
-window.testMapMovement = function() {
-    console.log('Testing map movement...');
-    if (map) {
-        map.setCenter([-122.4194, 37.7749]);
-        map.setZoom(12);
-        console.log('Map movement command sent');
-    } else {
-        console.error('Map not initialized');
-    }
-};
-
-// Rest of your existing code...
+}
 </script>
 
 <style>

@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 class MapService:
     def __init__(self):
         self.policy_service = PolicyService()
-        # Define default view state with reduced pitch
+        # Define default view state centered on Sahara Desert
         self.default_view_state = {
-            "latitude": 8.7832,
-            "longitude": 34.5085,
+            "latitude": 25.3345,
+            "longitude": 15.2504,
             "zoom": 4,
-            "pitch": 0,  # Changed from 45 to 0 for top-down view
+            "pitch": 0,
             "bearing": 0
         }
         # Updated color scheme for better visualization of improvement
@@ -135,10 +135,11 @@ class MapService:
             cell_seed = int(h3_index[-4:], 16)
             random.seed(cell_seed)
             random_factor = random.random() * 0.1
-            combined_factor = wave * 0.9 + random_factor
+            
+            # Make the combined factor more stable but still animated
+            combined_factor = (wave * 0.3) + (random_factor * 0.1) + 0.6  # Base value of 0.6
             
             # Map to impact level with smoother transition
-            # Use fewer impact levels for more visible progression
             simplified_impacts = [
                 'Critical Impact',
                 'High Impact',
@@ -150,22 +151,31 @@ class MapService:
             index = min(int(combined_factor * len(simplified_impacts)), len(simplified_impacts) - 1)
             impact_level = simplified_impacts[index]
             
-            # Calculate metrics based on improvement level
-            base_hectares = 1000
-            max_additional_hectares = 4000
+            # Calculate metrics with more stable base values
+            base_hectares = 2000
+            max_additional_hectares = 2000
             hectares = int(base_hectares + combined_factor * max_additional_hectares)
             
-            base_communities = 50
-            max_additional_communities = 150
+            base_communities = 100
+            max_additional_communities = 100
             communities = int(base_communities + combined_factor * max_additional_communities)
             
-            base_efficiency = 70
-            max_additional_efficiency = 25
+            base_efficiency = 80
+            max_additional_efficiency = 15
             efficiency = int(base_efficiency + combined_factor * max_additional_efficiency)
             
+            # Ensure impact_level is valid
+            if impact_level not in self.impact_colors:
+                impact_level = self.impact_levels[0]  # Use first level as default
+                
+            # Always return a valid hex color
+            color = self.impact_colors[impact_level]
+            if not color.startswith('#'):
+                color = '#' + color
+                
             return {
                 'impact_level': impact_level,
-                'color': self.impact_colors[impact_level],
+                'color': color,  # Ensure this is a valid hex color
                 'metrics': {
                     'hectares_restored': hectares,
                     'communities_affected': communities,
@@ -174,10 +184,10 @@ class MapService:
             }
         except Exception as e:
             logger.error(f"Error in _generate_cell_pattern for hex {h3_index}: {str(e)}")
-            # Return a default pattern in case of error
+            # Return a valid default color
             return {
                 'impact_level': self.impact_levels[0],
-                'color': self.impact_colors[self.impact_levels[0]],
+                'color': '#ff0000',  # Fallback to red
                 'metrics': {
                     'hectares_restored': 1000,
                     'communities_affected': 50,
