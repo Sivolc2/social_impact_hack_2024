@@ -119,7 +119,7 @@ class DataAgent:
                         }
                     })
             
-            self.vector_store.add_documents(formatted_docs)
+            self.vector_store.add_documents(formatted_docs, knowledge_base_path=str(path))
             logger.info(f"Loaded {len(formatted_docs)} documents into vector store")
             
         except Exception as e:
@@ -140,18 +140,19 @@ class DataAgent:
 
     async def process_query(self, query: str, context: Optional[Dict] = None) -> Dict:
         """Process a user query using Claude and vector store"""
-        similar_docs = self.vector_store.similarity_search(query, k=3)
-        confident_docs = [doc for doc in similar_docs if doc['score'] >= self.confidence_threshold]
-        doc_context = self._format_context(confident_docs)
-        
         try:
+            # Search for relevant documents in vector store
+            similar_docs = self.vector_store.similarity_search(query, k=3)
+            confident_docs = [doc for doc in similar_docs if doc['score'] >= self.confidence_threshold]
+            doc_context = self._format_context(confident_docs)
+            
             # Use query prompt template
             formatted_prompt = self.prompts["query"].format(
                 context=doc_context,
                 query=query
             )
             
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=1024,
                 system=self.prompts["system"],
@@ -161,43 +162,21 @@ class DataAgent:
                 }]
             )
             
-            logger.debug(f"Got response from Claude: {response}")
-            
-            claude_response = response.content[0].text
-            
-            logger.debug(f"Extracted text: {claude_response}")
-            
-            # Format final response
-            result = {
-                'response': claude_response,
+            return {
+                'response': response.content[0].text,
                 'confidence': confident_docs[0]['score'] if confident_docs else 0.5,
                 'supporting_docs': confident_docs,
-                'status': 'success',
-                'metadata': {
-                    'source': confident_docs[0]['document']['metadata'].get('source') if confident_docs else None,
-                    'category': confident_docs[0]['document']['metadata'].get('category') if confident_docs else None,
-                    'dataset_id': confident_docs[0]['document']['metadata'].get('dataset_id') if confident_docs else None
-                }
+                'status': 'success'
             }
-
+            
         except Exception as e:
-            logger.error(f"Error getting response from Claude: {str(e)}")
-            result = {
+            logger.error(f"Error processing query: {str(e)}")
+            return {
                 'response': "I apologize, but I encountered an error processing your request.",
                 'confidence': 0.0,
                 'supporting_docs': [],
-                'status': 'error',
-                'metadata': {}
+                'status': 'error'
             }
-
-        # Update conversation history
-        self.conversation_history.append({
-            'query': query,
-            'response': result,
-            'context': context
-        })
-
-        return result
 
     async def get_dataset_recommendations(self) -> List[Dict]:
         """Get dataset recommendations based on conversation history"""
