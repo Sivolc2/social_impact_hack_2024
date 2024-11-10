@@ -131,6 +131,64 @@ function initializeMapLayers(map) {
                 });
             }
 
+            // Add mouseover events with better error handling
+            map.on('mousemove', 'h3-hexagons-fill', (e) => {
+                if (e.features.length > 0) {
+                    const feature = e.features[0];
+                    if (feature.properties?.metrics) {
+                        let metrics;
+                        try {
+                            metrics = typeof feature.properties.metrics === 'string' 
+                                ? JSON.parse(feature.properties.metrics) 
+                                : feature.properties.metrics;
+                        } catch (error) {
+                            console.error('Error parsing metrics:', error);
+                            return;
+                        }
+
+                        // Format metrics safely
+                        const formatValue = (value) => {
+                            if (value === undefined || value === null) return 'N/A';
+                            const num = parseFloat(value);
+                            return isNaN(num) ? 'N/A' : num.toFixed(2);
+                        };
+
+                        // Create popup content with safe value formatting
+                        const popupContent = `
+                            <div class="popup-content">
+                                <h4>Year: ${feature.properties.year || 'N/A'}</h4>
+                                ${Object.entries(metrics).map(([key, value]) => `
+                                    <div class="popup-metric">
+                                        <span class="popup-metric-label">${key.split('_').map(word => 
+                                            word.charAt(0).toUpperCase() + word.slice(1)
+                                        ).join(' ')}:</span>
+                                        <span class="popup-metric-value">${formatValue(value)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+
+                        popup
+                            .setLngLat(e.lngLat)
+                            .setHTML(popupContent)
+                            .addTo(map);
+                    }
+                }
+            });
+
+            map.on('mouseleave', 'h3-hexagons-fill', () => {
+                popup.remove();
+            });
+
+            // Add hover effect
+            map.on('mouseenter', 'h3-hexagons-fill', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+
+            map.on('mouseleave', 'h3-hexagons-fill', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
             mapInitialized = true;
             console.log('Map layers initialized with empty data');
         } catch (error) {
