@@ -19,5 +19,6 @@ setup(
         "aiohttp",
         "uagents",
         "pydantic",
+        "rasterio",
     ]
 ) 
