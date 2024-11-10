@@ -49,7 +49,7 @@ def async_route(f):
 # Initialize the agent
 try:
     agent = DataAgent()
-    asyncio.run(agent.initialize())
+    asyncio.run(agent.initialize("data/knowledge_base.txt"))
     logging.info("Data agent initialized successfully")
 except Exception as e:
     logging.error(f"Failed to initialize DataAgent: {str(e)}")
@@ -70,21 +70,16 @@ async def chat():
         
         logging.debug(f"Got response: {response}")
         
+        # Simplify the response format
         return jsonify({
-            'insights': [
-                response['response'],
-                f"Confidence Score: {response['confidence']}"
-            ],
-            'recommendations': [
-                response.get('metadata', {}).get('source', 'No source available'),
-                response.get('status', 'No additional information')
-            ]
+            'response': response['response'],
+            'status': 'success'
         })
     except Exception as e:
         logging.error(f"Chat error: {str(e)}\n{traceback.format_exc()}")
         return jsonify({
-            'insights': [f"Error: {str(e)}"],
-            'recommendations': ["Please try again with a different question."]
+            'response': f"Error: {str(e)}",
+            'status': 'error'
         }), 500
 
 @app.route('/api/export-data', methods=['GET'])
@@ -126,6 +121,17 @@ def get_policy_data():
     except Exception as e:
         app.logger.error(f"Error generating policy data: {str(e)}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/process_hypothesis', methods=['POST'])
+def process_hypothesis():
+    data = request.get_json()
+    hypothesis = data.get('hypothesis')
+    
+    if not hypothesis:
+        return jsonify({'error': 'No hypothesis provided'}), 400
+        
+    result = agent.process_hypothesis_query(hypothesis)
+    return jsonify(result)
 
 if __name__ == '__main__':
     app.debug = True

@@ -29,17 +29,15 @@
         {% include 'components/chat.html' %}
     </div>
     
-    {% include 'components/policy.html' %}
+    <div class="policy-panel">
+        {% include 'components/policy.html' %}
+        <button id="export-btn" class="export-csv-btn">
+            <i class="fas fa-download"></i> Export CSV
+        </button>
+    </div>
 
     <!-- Load component scripts -->
     <script src="{{ url_for('static', filename='scripts/map.js') }}"></script>
     <script src="{{ url_for('static', filename='scripts/timeline.js') }}"></script>
-
-    <!-- Export button container -->
-    <div id="export-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
-        <button id="export-btn" class="btn btn-primary" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-            <i class="fas fa-download"></i> Export CSV
-        </button>
-    </div>
 </body>
 </html>

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Initialize conda for bash
+eval "$(conda shell.bash hook)"
+
 # Check if conda environment exists, create if it doesn't
 if ! conda env list | grep -q "the_green"; then
     conda create -n the_green python=3.11 -y

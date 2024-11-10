@@ -1,0 +1,33 @@
+[DATASET]
+ID: sdg-15-3-1
+NAME: SDG 15.3.1 Land Degradation
+SOURCE: TrendsEarth
+CATEGORY: land_degradation
+TEMPORAL_RANGE: 2000-2020
+SPATIAL_RESOLUTION: 300m
+DESCRIPTION: Comprehensive dataset tracking land degradation neutrality through productivity dynamics, land cover changes, and soil carbon stocks. Covers global land surface with particular focus on agricultural and forest areas.
+VARIABLES: productivity_trend, land_cover, soil_carbon
+TEXT: The SDG 15.3.1 dataset provides global coverage of land degradation metrics. It includes three main components: land productivity dynamics measuring vegetation growth trends, land cover monitoring detecting changes in ecosystem types, and soil organic carbon stock changes. The data is particularly valuable for analyzing agricultural sustainability and forest health trends.
+
+[DATASET]
+ID: forest-cover-hansen
+NAME: Global Forest Change
+SOURCE: Hansen/UMD/Google/USGS/NASA
+CATEGORY: forest_cover
+TEMPORAL_RANGE: 2000-2023
+SPATIAL_RESOLUTION: 30m
+DESCRIPTION: Annual tree cover loss and gain data, providing detailed forest change analysis globally
+VARIABLES: tree_cover, forest_loss, forest_gain
+TEXT: The Hansen Global Forest Change dataset tracks annual forest loss and gain at 30-meter resolution. It provides detailed information about forest cover changes, helping identify deforestation patterns and forest recovery areas. The dataset is particularly useful for monitoring tropical deforestation and forest management effectiveness.
+
+[DATASET]
+ID: ucdp-ged
+NAME: UCDP Georeferenced Event Dataset
+SOURCE: Uppsala Conflict Data Program (UCDP)
+CATEGORY: conflict_events
+TEMPORAL_RANGE: 1989-2023
+SPATIAL_RESOLUTION: Variable; events are geocoded to specific locations, often down to individual villages
+DESCRIPTION: Detailed data on individual events of organized violence worldwide, including information on date, location, actors involved, and fatalities
+VARIABLES: event_date, location, actor1, actor2, fatalities, event_type
+TEXT: The UCDP Georeferenced Event Dataset (GED) provides comprehensive information on organized violence events globally from 1989 to 2023. Each event is geocoded to precise locations and includes details such as the date, actors involved, and number of fatalities.
+

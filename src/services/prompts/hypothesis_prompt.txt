@@ -1,0 +1,19 @@
+Research Question: "{query}"
+
+Please analyze this hypothesis in terms of data availability:
+
+1. AVAILABLE DATASETS:
+   - Which of our current datasets would be most relevant?
+   - What specific variables would be useful?
+   - What are the temporal and spatial coverages?
+
+2. DATA GAPS:
+   - What additional data would strengthen the analysis?
+   - Are there temporal or spatial coverage gaps?
+   - What related variables might be missing?
+
+3. RECOMMENDATIONS:
+   - How could the available data be used effectively?
+   - What alternative approaches might work with current data?
+
+Base your response only on the datasets in our knowledge base.

@@ -1,0 +1,19 @@
+Context: {context}
+
+Research Question: {query}
+
+Please provide a structured analysis:
+
+1. AVAILABLE DATA:
+   - List each relevant dataset with its temporal range and key variables
+   - Explain how each dataset relates to the research question
+
+2. DATA GAPS:
+   - Identify missing data that would be valuable
+   - Explain why this data would be useful
+
+3. ANALYSIS APPROACH:
+   - Suggest how to use the available data
+   - Outline potential limitations
+
+Please be specific and reference the datasets from our knowledge base.

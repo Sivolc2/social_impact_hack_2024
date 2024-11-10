@@ -162,9 +162,9 @@ cython_debug/
 #.idea/
 
 
-.tiff
-.gis
-.gdal
-.csv
-
+*.tiff
+*.gis
+*.gdal
+*.csv
+.secrets
 
