@@ -68,6 +68,8 @@ def load_ged_data(csv_path: str, country: str = None) -> pd.DataFrame:
                 (df['longitude'] >= bounds['lon_min']) & 
                 (df['longitude'] <= bounds['lon_max'])
             ]
+            # Set country field since we used bounds filtering
+            df['country'] = 'Malawi'
         else:
             df = df[df['country'] == country]
             
@@ -82,7 +84,7 @@ def load_ged_data(csv_path: str, country: str = None) -> pd.DataFrame:
     
     return df
 
-def aggregate_by_h3(df: pd.DataFrame, resolution: int = 3) -> Dict[str, Any]:
+def aggregate_by_h3(df: pd.DataFrame, resolution: int = 3, country: str = None) -> Dict[str, Any]:
     """Aggregate GED data by H3 cells and year"""
     logger.info(f"Aggregating data using H3 resolution {resolution}")
     
@@ -173,6 +175,8 @@ def aggregate_by_h3(df: pd.DataFrame, resolution: int = 3) -> Dict[str, Any]:
                         }
                     }
                 }
+                if country:
+                    feature['properties']['country'] = country
                 features.append(feature)
                 
             except Exception as e:
@@ -218,6 +222,10 @@ def aggregate_by_h3(df: pd.DataFrame, resolution: int = 3) -> Dict[str, Any]:
         }
     }
     
+    if country:
+        geojson['metadata']['country'] = country
+        geojson['metadata']['bounds'] = get_country_bounds()[country]
+    
     return geojson
 
 def convert_ged_to_h3(input_path: str, output_path: str, resolution: int = 3, country: str = None):
@@ -226,17 +234,14 @@ def convert_ged_to_h3(input_path: str, output_path: str, resolution: int = 3, co
         # Load and process data
         df = load_ged_data(input_path, country)
         
-        # Modify output path to include country name if specified
-        if country:
-            output_path = str(Path(output_path).parent / f"ged_h3_{country.lower()}.geojson")
-        
         # Aggregate by H3
-        geojson = aggregate_by_h3(df, resolution)
+        geojson = aggregate_by_h3(df, resolution, country)
         
-        # Add country to metadata
+        # Filter by country boundary if specified
         if country:
-            geojson['metadata']['country'] = country
-            geojson['metadata']['bounds'] = get_country_bounds()[country]
+            from utils.geo_filter import filter_geojson_by_country
+            geojson = filter_geojson_by_country(geojson, country)
+            output_path = str(Path(output_path).parent / f"ged_h3_{country.lower()}.geojson")
         
         # Save output
         output_dir = Path(output_path).parent
@@ -255,7 +260,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Convert GED CSV to H3-aggregated GeoJSON')
-    parser.add_argument('--input', default='preprocessing/data/GEDEvent_v24_1.csv',
+    parser.add_argument('--input', default='./scripts/preprocessing/data/GEDEvent_v24_1.csv',
                       help='Input GED CSV file path')
     parser.add_argument('--output', default='data/ged_h3_aggregated.geojson',
                       help='Output GeoJSON file path')

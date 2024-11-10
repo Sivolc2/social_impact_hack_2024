@@ -66,6 +66,23 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
         console.error('Error initializing map:', error);
     }
+
+    // Add export button handler
+    const exportButton = document.getElementById('export-btn');
+    if (exportButton) {
+        exportButton.addEventListener('click', () => {
+            if (window.currentData) {
+                // Generate filename with timestamp
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const filename = `export_${timestamp}.geojson`;
+                
+                downloadGeoJSON(window.currentData, filename);
+            } else {
+                console.warn('No data available to export');
+                alert('No data available to export');
+            }
+        });
+    }
 });
 
 // Add map-related utility functions and event handlers here
@@ -711,5 +728,38 @@ async function loadInitialData() {
         }
     } catch (error) {
         console.error('Error loading initial data:', error);
+    }
+}
+
+// Add this function near the top of the file with other utility functions
+function downloadGeoJSON(data, filename) {
+    if (!data) {
+        console.error('No data available to export');
+        return;
+    }
+
+    try {
+        // Convert the data to a string with pretty printing
+        const dataStr = JSON.stringify(data, null, 2);
+        
+        // Create a blob with the data
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        
+        // Create a temporary link element
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename || 'export.geojson';
+        
+        // Append link to body, click it, and remove it
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the URL object
+        URL.revokeObjectURL(link.href);
+        
+        console.log('GeoJSON export completed');
+    } catch (error) {
+        console.error('Error exporting GeoJSON:', error);
     }
 }
