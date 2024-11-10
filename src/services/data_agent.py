@@ -7,6 +7,7 @@ import asyncio
 import anthropic
 from anthropic import Anthropic
 import os
+from .summary_agent import SummaryAgent
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ class DataAgent:
         
         # Load prompts
         self.prompts = self._load_prompts()
+        
+        # Add summary agent
+        self.summary_agent = SummaryAgent()
 
     def _load_prompts(self) -> Dict[str, str]:
         """Load all prompt templates from files"""
@@ -138,7 +142,7 @@ class DataAgent:
             context += f"   Confidence: {confidence:.2f}\n\n"
         return context
 
-    async def process_query(self, query: str, context: Optional[Dict] = None) -> Dict:
+    async def process_query(self, query: str, context: Optional[Dict] = None, include_summary: bool = False) -> Dict:
         """Process a user query using Claude and vector store"""
         try:
             # Search for relevant documents in vector store
@@ -152,7 +156,8 @@ class DataAgent:
                 query=query
             )
             
-            response = await self.client.messages.create(
+            # Create message synchronously
+            message = self.client.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=1024,
                 system=self.prompts["system"],
@@ -162,8 +167,18 @@ class DataAgent:
                 }]
             )
             
+            # Extract response text from message
+            response_text = message.content[0].text if message and message.content else "No response generated"
+            
+            # Generate summary table only if include_summary is True
+            summary_table = ''
+            if include_summary:
+                summary_table = await self.summary_agent.create_summary_table(response_text)
+                summary_table = self.summary_agent.format_html_table(summary_table)
+            
             return {
-                'response': response.content[0].text,
+                'response': response_text,
+                'summary_table': summary_table,
                 'confidence': confident_docs[0]['score'] if confident_docs else 0.5,
                 'supporting_docs': confident_docs,
                 'status': 'success'
@@ -172,7 +187,8 @@ class DataAgent:
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")
             return {
-                'response': "I apologize, but I encountered an error processing your request.",
+                'response': f"I apologize, but I encountered an error processing your request: {str(e)}",
+                'summary_table': '',
                 'confidence': 0.0,
                 'supporting_docs': [],
                 'status': 'error'
@@ -272,7 +288,8 @@ class DataAgent:
             # Use hypothesis prompt template
             formatted_prompt = self.prompts["hypothesis"].format(query=query)
             
-            response = await self.client.messages.create(
+            # Create message synchronously
+            message = self.client.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=150,
                 messages=[{
@@ -281,9 +298,12 @@ class DataAgent:
                 }]
             )
             
+            # Extract response text from message
+            response_text = message.content[0].text if message and message.content else ""
+            
             # Parse Claude's response into structured suggestions
             suggestions = []
-            for line in response.content[0].text.split('\n'):
+            for line in response_text.split('\n'):
                 if line.strip():
                     suggestions.append({
                         "type": "Suggested Dataset",

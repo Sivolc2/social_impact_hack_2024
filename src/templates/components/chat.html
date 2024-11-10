@@ -1,23 +1,49 @@
 <div class="chat-container">
+    <div class="chat-mode-toggle">
+        <button class="toggle-button active" data-mode="data">Data</button>
+        <button class="toggle-button" data-mode="analysis">Analysis</button>
+    </div>
+    
     <div id="chat-messages" class="chat-messages">
         <!-- Messages will be inserted here -->
     </div>
     
     <div class="chat-input-container">
         <input type="text" id="chat-input" class="chat-input" placeholder="Ask about environmental data...">
-        <button onclick="sendMessage()" class="chat-send-button">Send</button>
+        <div class="button-group">
+            <button onclick="sendMessage()" class="chat-send-button">Send</button>
+            <button onclick="sendToMap()" class="map-send-button">Send To Map</button>
+        </div>
     </div>
 </div>
 
 <script>
 let messageQueue = [];
 let isProcessing = false;
+let currentMode = 'data';
 
-function addMessageToChat(role, message) {
+function addMessageToChat(role, message, summaryTable = '') {
     const messagesContainer = document.getElementById('chat-messages');
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${role}-message`;
-    messageDiv.textContent = message;
+    
+    if (summaryTable || message.includes('<')) {
+        messageDiv.innerHTML = `
+            <div class="message-text">${message}</div>
+            ${summaryTable ? `
+                <div class="summary-section">
+                    <h4 style="color: #ffffff; margin-bottom: 0.5rem;">Summary Table</h4>
+                    ${summaryTable}
+                </div>
+            ` : ''}
+        `;
+    } else {
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+        textDiv.textContent = message;
+        messageDiv.appendChild(textDiv);
+    }
+    
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
@@ -60,23 +86,33 @@ async function sendMessage() {
     document.getElementById('chat-messages').appendChild(loadingDiv);
     
     try {
-        const response = await fetch('/chat', {
+        const endpoint = '/chat';  // Use single endpoint
+        
+        const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                question: message
+                question: message,
+                mode: currentMode  // Send current mode to backend
             })
         });
         
         const data = await response.json();
+        console.log('Response from server:', data);
         
         // Remove loading indicator
         loadingDiv.remove();
         
-        // Add AI response
-        addMessageToChat('assistant', data.response);
+        // Add AI response with summary table only if in data mode and table exists
+        if (currentMode === 'data' && data.summary_table) {
+            console.log('Summary table found:', data.summary_table);
+            addMessageToChat('assistant', data.response, data.summary_table);
+        } else {
+            // In analysis mode or no summary table, just show response
+            addMessageToChat('assistant', data.response);
+        }
         
     } catch (error) {
         console.error('Error:', error);
@@ -148,131 +184,94 @@ async function processHypothesis(hypothesis) {
 }
 
 // Call the getInitialPrompt function when the page loads
-window.addEventListener('DOMContentLoaded', getInitialPrompt);
+window.addEventListener('DOMContentLoaded', () => {
+    getInitialPrompt();
+    initializeToggleButtons();
+});
+
+function initializeToggleButtons() {
+    const toggleButtons = document.querySelectorAll('.toggle-button');
+    
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            toggleButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            currentMode = button.dataset.mode;
+            
+            // Update placeholder text based on mode
+            const chatInput = document.getElementById('chat-input');
+            if (currentMode === 'data') {
+                chatInput.placeholder = 'Ask about environmental data...';
+            } else {
+                chatInput.placeholder = 'Ask for analysis of the selected region...';
+                // Clear any existing messages when switching to analysis mode
+                document.getElementById('chat-messages').innerHTML = '';
+                addMessageToChat('assistant', 'Switched to analysis mode. How can I help analyze the selected region?');
+            }
+        });
+    });
+}
+
+async function sendToMap() {
+    try {
+        // Get all chat messages
+        const chatMessages = document.getElementById('chat-messages');
+        const messages = Array.from(chatMessages.children).map(msg => ({
+            role: msg.classList.contains('user-message') ? 'user' : 
+                  msg.classList.contains('assistant-message') ? 'assistant' : 'system',
+            content: msg.textContent
+        }));
+        
+        // Show loading indicator
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat-message loading-message';
+        loadingDiv.innerHTML = '<div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>';
+        chatMessages.appendChild(loadingDiv);
+        
+        // Also include current input if it exists
+        const currentInput = document.getElementById('chat-input').value.trim();
+        if (currentInput) {
+            messages.push({
+                role: 'user',
+                content: currentInput
+            });
+        }
+        
+        const response = await fetch('/send-to-map', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messages: messages
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Response from server:', data);
+        
+        // Remove loading indicator
+        loadingDiv.remove();
+        
+        // Clear input if there was any
+        document.getElementById('chat-input').value = '';
+        
+        // Switch to analysis mode
+        const analysisButton = document.querySelector('[data-mode="analysis"]');
+        const toggleButtons = document.querySelectorAll('.toggle-button');
+        toggleButtons.forEach(btn => btn.classList.remove('active'));
+        analysisButton.classList.add('active');
+        
+        // Add feedback message
+        addMessageToChat('system', 'Query sent to map visualization. Switching to analysis mode...');
+        
+    } catch (error) {
+        console.error('Error sending to map:', error);
+        addMessageToChat('error', 'Sorry, there was an error processing the conversation for map visualization. ' + error.message);
+    }
+}
 </script>
-
-<style>
-.chat-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    background-color: #2d2d2d;
-}
-
-.chat-messages {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    background-color: #2d2d2d;
-}
-
-.chat-message {
-    padding: 12px 16px;
-    border-radius: 12px;
-    max-width: 80%;
-    word-wrap: break-word;
-    line-height: 1.4;
-}
-
-.user-message {
-    align-self: flex-end;
-    background-color: #007bff;
-    color: white;
-}
-
-.assistant-message {
-    align-self: flex-start;
-    background-color: #383838;
-    color: #ffffff;
-    border: 1px solid #505050;
-    white-space: pre-line;
-}
-
-.error-message {
-    align-self: flex-start;
-    background-color: #dc3545;
-    color: white;
-}
-
-.loading-message {
-    align-self: flex-start;
-    background-color: #383838;
-    border: 1px solid #505050;
-    color: #ffffff;
-}
-
-.loading-dots span {
-    animation: dots 1.5s infinite;
-    display: inline-block;
-}
-
-.loading-dots span:nth-child(2) { animation-delay: 0.5s; }
-.loading-dots span:nth-child(3) { animation-delay: 1s; }
-
-@keyframes dots {
-    0%, 20% { transform: translateY(0); }
-    50% { transform: translateY(-5px); }
-    80%, 100% { transform: translateY(0); }
-}
-
-.chat-input-container {
-    display: flex;
-    gap: 10px;
-    padding: 20px 0;
-    background-color: #2d2d2d;
-}
-
-.chat-input {
-    flex-grow: 1;
-    padding: 10px;
-    border: 1px solid #505050;
-    border-radius: 5px;
-    font-size: 16px;
-    background-color: #383838;
-    color: #ffffff;
-}
-
-.chat-input::placeholder {
-    color: #aaa;
-}
-
-.chat-send-button {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-.chat-send-button:hover {
-    background-color: #0056b3;
-}
-
-.message-insights {
-    margin-bottom: 10px;
-}
-
-.message-recommendations {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid #dee2e6;
-}
-
-.message-recommendations h4 {
-    margin: 0 0 5px 0;
-    font-size: 14px;
-    color: #6c757d;
-}
-
-.message-recommendations p {
-    margin: 5px 0;
-    font-size: 14px;
-}
-</style> 

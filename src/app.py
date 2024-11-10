@@ -13,6 +13,7 @@ import logging
 from pydantic import BaseModel
 import asyncio
 from functools import wraps
+from .services.analysis_agent import AnalysisAgent
 
 # Define the models that were previously imported
 class DataRequest(BaseModel):
@@ -55,30 +56,43 @@ except Exception as e:
     logging.error(f"Failed to initialize DataAgent: {str(e)}")
     raise
 
+# Initialize both agents
+data_agent = DataAgent()
+analysis_agent = AnalysisAgent()
+
 @app.route('/chat', methods=['POST'])
 @async_route
 async def chat():
     try:
         data = request.json
         question = data.get('question')
+        mode = data.get('mode', 'data')  # Get the current mode
         context = data.get('context', {})
         
-        logging.debug(f"Processing chat query: {question}")
+        logging.debug(f"Processing {mode} query: {question}")
         
-        # Process query through the agent
-        response = await agent.process_query(question, context)
+        if mode == 'data':
+            # Process query through data agent with summary
+            response = await agent.process_query(question, context, include_summary=True)
+        else:
+            # Process through analysis agent without summary
+            response = await analysis_agent.process_query(question, context)
+            # Convert analysis response to match expected format
+            response = {
+                'response': response.get('response', ''),
+                'summary_table': '',  # No summary table for analysis mode
+                'status': response.get('status', 'error')
+            }
         
         logging.debug(f"Got response: {response}")
         
-        # Simplify the response format
-        return jsonify({
-            'response': response['response'],
-            'status': 'success'
-        })
+        return jsonify(response)
+        
     except Exception as e:
         logging.error(f"Chat error: {str(e)}\n{traceback.format_exc()}")
         return jsonify({
             'response': f"Error: {str(e)}",
+            'summary_table': '',
             'status': 'error'
         }), 500
 
@@ -132,6 +146,47 @@ def process_hypothesis():
         
     result = agent.process_hypothesis_query(hypothesis)
     return jsonify(result)
+
+@app.route('/send-to-map', methods=['POST'])
+def send_to_map():
+    try:
+        data = request.get_json()
+        messages = data.get('messages', [])
+        
+        # Process the conversation history
+        # You can add your logic here to analyze the messages and determine what to show on the map
+        
+        # For now, just return a success response
+        return jsonify({
+            'status': 'success',
+            'message': 'Conversation processed for map visualization',
+            # Add any additional data you want to send back to update the map
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/analysis', methods=['POST'])
+async def handle_analysis():
+    try:
+        data = request.get_json()
+        question = data.get('question')
+        
+        # Get current map context if available
+        context = session.get('map_context', {})
+        
+        response = await analysis_agent.process_query(question, context)
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Error in analysis endpoint: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.debug = True
