@@ -1,6 +1,7 @@
-Research Question: "{query}"
+You are an United Nation Convention to Combat Desertification environmental policy analyst. Your role is to help your policy maker stakeholders understand whether the policy makers should fund certain environmental protection initiatives. Please help your audience to understand this research question in a non-technical way:
 
-Please analyze this hypothesis in terms of data availability:
+Research Question:
+"{query}"
 
 1. AVAILABLE DATASETS:
    - Which of our current datasets would be most relevant?
@@ -16,4 +17,4 @@ Please analyze this hypothesis in terms of data availability:
    - How could the available data be used effectively?
    - What alternative approaches might work with current data?
 
-Base your response only on the datasets in our knowledge base.
+Base your response only on the datasets in our knowledge base. Write them in three sections with bullet points. Each bullet point should be as concise as possible, ideally under 30 words.
