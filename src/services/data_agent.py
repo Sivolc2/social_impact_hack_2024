@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from .vector_store import VectorStore
 from pathlib import Path
 import json
@@ -18,10 +18,14 @@ class DataAgent:
         self.confidence_threshold = 0.5
         
         # Initialize Claude
-        api_key = os.getenv('ANTHROPIC_API_KEY')
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
-        self.client = Anthropic(api_key=api_key)
+        self.api_key = os.getenv('ANTHROPIC_API_KEY')
+        if not self.api_key:
+            logger.warning("ANTHROPIC_API_KEY not found in environment variables")
+        try:
+            self.client = Anthropic(api_key=self.api_key)
+        except Exception as e:
+            logger.error(f"Failed to initialize Anthropic client: {str(e)}")
+            self.client = None
         
         # Load prompts
         self.prompts = self._load_prompts()
@@ -125,9 +129,14 @@ class DataAgent:
             }
         }
 
-    async def process_query(self, query: str, context: Optional[Dict] = None) -> Dict:
-        """Process a user query using Claude and vector store"""
+    async def process_query(self, query: str) -> Dict[str, Any]:
         try:
+            if not self.client:
+                return {
+                    'response': "Sorry, I'm having trouble connecting to my knowledge base. Please check the API configuration.",
+                    'error': True
+                }
+
             # Check if query is about available datasets
             if any(keyword in query.lower() for keyword in ['available', 'datasets', 'list', 'what data']):
                 # Prioritize returning the dataset catalog
@@ -151,8 +160,9 @@ class DataAgent:
             
             If no relevant information is found, please state that explicitly."""
             
+            # Create message synchronously - don't use await here
             message = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model="claude-3-sonnet-20240229",
                 max_tokens=1024,
                 system=self.prompts["system"],
                 messages=[{"role": "user", "content": formatted_prompt}]
@@ -163,7 +173,7 @@ class DataAgent:
             self.conversation_history.append({
                 'query': query,
                 'response': response_text,
-                'context': context
+                'context': doc_context  # Fixed: was using undefined 'context'
             })
             
             return {

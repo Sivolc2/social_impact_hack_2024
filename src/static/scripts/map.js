@@ -100,4 +100,96 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error loading policy data:', error);
             });
     }
+
+    function updateMapWithGeoJSON(geojsonData) {
+        // Remove existing policy layers if they exist
+        ['policy-hexagons', 'policy-hexagons-outline'].forEach(layerId => {
+            if (window.map.getLayer(layerId)) {
+                window.map.removeLayer(layerId);
+            }
+        });
+        if (window.map.getSource('policy-data')) {
+            window.map.removeSource('policy-data');
+        }
+
+        // Add new source and layers
+        window.map.addSource('policy-data', {
+            type: 'geojson',
+            data: geojsonData
+        });
+
+        // Add fill layer
+        window.map.addLayer({
+            'id': 'policy-hexagons',
+            'type': 'fill',
+            'source': 'policy-data',
+            'paint': {
+                'fill-color': ['get', 'color'],
+                'fill-opacity': 0.6
+            }
+        });
+
+        // Add outline layer
+        window.map.addLayer({
+            'id': 'policy-hexagons-outline',
+            'type': 'line',
+            'source': 'policy-data',
+            'paint': {
+                'line-color': '#ffffff',
+                'line-width': 1,
+                'line-opacity': 0.5
+            }
+        });
+
+        // Add popup on hover
+        const popup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false
+        });
+
+        window.map.on('mouseenter', 'policy-hexagons', (e) => {
+            window.map.getCanvas().style.cursor = 'pointer';
+            
+            const properties = e.features[0].properties;
+            const coordinates = e.lngLat;
+            
+            // Create popup content
+            const html = `
+                <div class="popup-content">
+                    <h4>Land Degradation Metrics</h4>
+                    <p>Impact Level: ${properties.impact_level}</p>
+                    <p>Degradation Value: ${(properties.degradation_value * 100).toFixed(1)}%</p>
+                    <p>Productivity Trend: ${properties.productivity_trend.toFixed(2)}</p>
+                    <p>Soil Carbon: ${properties.soil_carbon.toFixed(1)} tons/ha</p>
+                </div>
+            `;
+
+            popup.setLngLat(coordinates)
+                .setHTML(html)
+                .addTo(window.map);
+        });
+
+        window.map.on('mouseleave', 'policy-hexagons', () => {
+            window.map.getCanvas().style.cursor = '';
+            popup.remove();
+        });
+
+        // Fit map to GeoJSON bounds
+        if (geojsonData.metadata?.bounds) {
+            const bounds = [
+                [geojsonData.metadata.bounds.left, geojsonData.metadata.bounds.bottom],
+                [geojsonData.metadata.bounds.right, geojsonData.metadata.bounds.top]
+            ];
+            window.map.fitBounds(bounds, { padding: 50 });
+        }
+    }
+
+    // Update the existing sendToMap function in chat.html to call this
+    function handleMapUpdate(data) {
+        if (data.success && data.data) {
+            updateMapWithGeoJSON(data.data);
+        } else {
+            console.error('Error updating map:', data.error);
+        }
+    }
 }); 

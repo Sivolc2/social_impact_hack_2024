@@ -15,6 +15,10 @@ import asyncio
 from functools import wraps
 from .services.analysis_agent import AnalysisAgent
 
+# Set up logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
+
 # Define the models that were previously imported
 class DataRequest(BaseModel):
     question: str
@@ -29,16 +33,30 @@ class DataResponse(BaseModel):
 # Load environment variables
 load_dotenv()
 
+# Add this after load_dotenv()
+if not os.getenv('ANTHROPIC_API_KEY'):
+    logger.warning("ANTHROPIC_API_KEY not found in environment variables")
+
+def validate_environment():
+    required_vars = ['MAPBOX_API_KEY', 'ANTHROPIC_API_KEY']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+        logger.error(error_msg)
+        raise EnvironmentError(error_msg)
+
 app = Flask(__name__, 
     static_folder='static',
     template_folder='templates'
 )
 CORS(app)
 
+# Validate environment variables
+validate_environment()
+
 map_service = MapService()
 dataset_service = DatasetService()
-
-logging.basicConfig(level=logging.DEBUG)
 
 # Helper function to run async code in Flask
 def async_route(f):
@@ -52,32 +70,48 @@ try:
     data_agent = DataAgent()
     asyncio.run(data_agent.initialize("data/knowledge_base.json"))
     analysis_agent = AnalysisAgent()
-    logging.info("Agents initialized successfully")
+    logger.info("Agents initialized successfully")
 except Exception as e:
-    logging.error(f"Failed to initialize agents: {str(e)}")
+    logger.error(f"Failed to initialize agents: {str(e)}")
     raise
+
+# Debug log for API key presence
+logger.debug(f"ANTHROPIC_API_KEY present: {'ANTHROPIC_API_KEY' in os.environ}")
+
+def validate_mapbox_token(token):
+    if not token:
+        return False
+    if token == 'your_actual_mapbox_token_here':
+        return False
+    if not token.startswith('pk.eyJ1'):  # Basic format check for public tokens
+        return False
+    return True
 
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
     user_message = data.get('message', '')
     message_history = data.get('history', [])
-    current_mode = data.get('mode', 'data')  # Get the current mode from the request
+    current_mode = data.get('mode', 'data')
     
     def generate():
         try:
             if current_mode == 'data':
                 # Use data agent for data mode
                 response = asyncio.run(data_agent.process_query(user_message))
-                yield f"data: {json.dumps({'chunk': response['response']})}\n\n"
+                if response.get('error'):
+                    yield f"data: {json.dumps({'chunk': response['response'], 'error': True})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'chunk': response['response']})}\n\n"
             else:
                 # Use analysis agent for analysis mode
                 for chunk in analysis_agent.stream_analysis(user_message):
-                    if chunk:  # Only yield non-empty chunks
+                    if chunk:
                         yield f"data: {json.dumps({'chunk': chunk})}\n\n"
         except Exception as e:
             logger.error(f"Error in chat endpoint: {str(e)}")
-            yield f"data: {json.dumps({'chunk': f'Error: {str(e)}'})}\n\n"
+            error_message = "I apologize, but I'm having trouble connecting to my knowledge base. Please check the API configuration."
+            yield f"data: {json.dumps({'chunk': error_message, 'error': True})}\n\n"
     
     return Response(
         stream_with_context(generate()), 
@@ -85,8 +119,7 @@ def chat():
         headers={
             'Cache-Control': 'no-cache',
             'Content-Type': 'text/event-stream',
-            'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive'
+            'X-Accel-Buffering': 'no'
         }
     )
 
@@ -101,7 +134,11 @@ async def export_data():
 
 @app.route('/')
 def index():
-    return render_template('base.html')
+    mapbox_token = os.getenv('MAPBOX_API_KEY')
+    if not validate_mapbox_token(mapbox_token):
+        logger.error("Invalid MAPBOX_API_KEY configuration")
+        return "Error: Invalid Mapbox token configuration. Please check your .env file.", 500
+    return render_template('base.html', mapbox_token=mapbox_token)
 
 @app.route('/api/map/base')
 def get_base_map():
@@ -144,24 +181,22 @@ def process_hypothesis():
 @app.route('/send-to-map', methods=['POST'])
 def send_to_map():
     try:
-        data = request.get_json()
-        messages = data.get('messages', [])
-        
-        # Process the conversation history
-        # You can add your logic here to analyze the messages and determine what to show on the map
-        
-        # For now, just return a success response
-        return jsonify({
-            'status': 'success',
-            'message': 'Conversation processed for map visualization',
-            # Add any additional data you want to send back to update the map
-        })
-        
+        map_service = MapService()
+        # Load the sample SDG data
+        data = map_service.load_sdg_sample()
+        return jsonify(data)
     except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
+        app.logger.error(f"Error in send_to_map: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/datasets/<dataset_id>/map', methods=['GET'])
+def get_dataset_map(dataset_id):
+    try:
+        dataset_service = DatasetService()
+        map_data = dataset_service.load_dataset_for_map(dataset_id)
+        return jsonify(map_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/analysis', methods=['POST'])
 async def handle_analysis():

@@ -11,8 +11,8 @@
     <div class="chat-input-container">
         <input type="text" id="user-input" class="chat-input" placeholder="Ask about environmental data...">
         <div class="button-group">
+            <button onclick="window.sendToMap()" class="map-send-button">Send To Map</button>
             <button onclick="sendMessage()" class="chat-send-button">Send</button>
-            <button onclick="sendToMap()" class="map-send-button">Send To Map</button>
         </div>
     </div>
 </div>
@@ -314,29 +314,23 @@ function initializeToggleButtons() {
 
 async function sendToMap() {
     try {
-        // Get all chat messages
         const chatMessages = document.getElementById('chat-messages');
-        const messages = Array.from(chatMessages.children).map(msg => ({
-            role: msg.classList.contains('user-message') ? 'user' : 
-                  msg.classList.contains('assistant-message') ? 'assistant' : 'system',
-            content: msg.textContent
-        }));
-        
-        // Show loading indicator
         const loadingDiv = document.createElement('div');
         loadingDiv.className = 'chat-message loading-message';
         loadingDiv.innerHTML = '<div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>';
         chatMessages.appendChild(loadingDiv);
-        
-        // Also include current input if it exists
-        const currentInput = document.getElementById('user-input').value.trim();
-        if (currentInput) {
-            messages.push({
-                role: 'user',
-                content: currentInput
-            });
-        }
-        
+
+        // Get chat history
+        const messages = Array.from(chatMessages.children)
+            .filter(msg => !msg.classList.contains('loading-message'))
+            .map(msg => ({
+                role: msg.classList.contains('user-message') ? 'user' : 
+                      msg.classList.contains('assistant-message') ? 'assistant' : 'system',
+                content: msg.textContent.trim()
+            }));
+
+        console.log('Sending messages to server:', messages);
+
         const response = await fetch('/send-to-map', {
             method: 'POST',
             headers: {
@@ -346,45 +340,56 @@ async function sendToMap() {
                 messages: messages
             })
         });
-        
+
+        console.log('Server response status:', response.status);
+
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            console.error('Server error:', errorText);
+            throw new Error(`Server responded with status: ${response.status}. ${errorText}`);
         }
-        
+
         const data = await response.json();
-        console.log('Response from server:', data);
+        console.log('Received data from server:', data);
         
+        if (!data || !data.features || !Array.isArray(data.features)) {
+            console.error('Invalid data format:', data);
+            throw new Error('Invalid data format received from server');
+        }
+
         // Remove loading indicator
         loadingDiv.remove();
-        
-        // Clear input if there was any
-        document.getElementById('user-input').value = '';
-        
-        // Add transition message
-        addMessageToChat('system', 'Query sent to map visualization. Switching to analysis mode...');
-        
-        // Wait a moment for the user to see the transition message
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Switch to analysis mode and clear previous conversation
-        const analysisButton = document.querySelector('[data-mode="analysis"]');
-        const toggleButtons = document.querySelectorAll('.toggle-button');
-        toggleButtons.forEach(btn => btn.classList.remove('active'));
-        analysisButton.classList.add('active');
-        currentMode = 'analysis';
-        
-        // Clear chat messages and show initial analysis message
-        document.getElementById('chat-messages').innerHTML = '';
-        addMessageToChat('assistant', 'Hello! I\'m an expert environmental data analyst assistant. How can I help analyze your selected region?');
-        
-        // Update input placeholder
-        document.getElementById('user-input').placeholder = 'Ask for analysis of the selected region...';
-        
+
+        // Validate the data has the expected structure
+        if (data.type !== 'FeatureCollection') {
+            throw new Error('Invalid GeoJSON format');
+        }
+
+        // Update the map with the new data
+        if (typeof window.handleMapUpdate === 'function') {
+            await window.handleMapUpdate(data);
+        } else {
+            throw new Error('Map update handler not found');
+        }
+
+        // Add success message with feature count
+        addMessageToChat('system', `Successfully loaded ${data.features.length} H3 cells for analysis.`);
+
     } catch (error) {
         console.error('Error sending to map:', error);
-        addMessageToChat('error', 'Sorry, there was an error processing the conversation for map visualization. ' + error.message);
+        const errorMessage = error.message || 'An unknown error occurred';
+        addMessageToChat('system', `Error loading data to map: ${errorMessage}`);
+        
+        // Remove loading indicator if it exists
+        const loadingDiv = document.querySelector('.loading-message');
+        if (loadingDiv) {
+            loadingDiv.remove();
+        }
     }
 }
+
+// Make sure sendToMap is in global scope
+window.sendToMap = sendToMap;
 
 // Add this function to handle scroll detection
 function setupScrollListener() {

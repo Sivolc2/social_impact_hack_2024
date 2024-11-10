@@ -2,4 +2,285 @@
     <div id="map"></div>
     {% include 'components/legend.html' %}
     {% include 'components/timeline.html' %}
-</div> 
+</div>
+
+<script>
+// Initialize map and popup globally
+let map;
+let popup;
+
+// Initialize the map when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Get mapbox token
+    const mapboxToken = '{{ mapbox_token }}';
+    
+    // Validate token
+    if (!mapboxToken || mapboxToken === 'None') {
+        console.error('Mapbox token not found');
+        document.getElementById('map').innerHTML = `
+            <div style="padding: 20px; color: red;">
+                Error: Mapbox token not configured. Please check your environment variables.
+            </div>`;
+        return;
+    }
+
+    // Initialize mapboxgl map
+    mapboxgl.accessToken = mapboxToken;
+    
+    try {
+        map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/satellite-v9',
+            center: [34.5085, 8.7832], // Default center
+            zoom: 4,
+            pitch: 0,
+            bearing: 0,
+            projection: 'globe'
+        });
+
+        // Initialize popup
+        popup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false
+        });
+
+        // Wait for map to load before making it available globally
+        map.on('load', () => {
+            window.map = map;
+            window.popup = popup;
+            console.log('Map initialized successfully');
+        });
+
+        map.on('error', (e) => {
+            console.error('Map error:', e);
+        });
+
+    } catch (error) {
+        console.error('Error initializing map:', error);
+        document.getElementById('map').innerHTML = `
+            <div style="padding: 20px; color: red;">
+                Error initializing map: ${error.message}
+            </div>`;
+    }
+});
+
+// Map update handler
+window.handleMapUpdate = function(geojsonData) {
+    try {
+        console.log('Received data for map update:', geojsonData);
+        console.log('Sample feature:', geojsonData.features[0]);
+        console.log('Sample feature color:', geojsonData.features[0].properties.color);
+        
+        // Ensure map is initialized
+        if (!map) {
+            console.error('Map not initialized');
+            throw new Error('Map not initialized');
+        }
+
+        // Validate the data
+        if (!geojsonData || !geojsonData.features) {
+            console.error('Invalid GeoJSON data:', geojsonData);
+            throw new Error('Invalid GeoJSON data');
+        }
+
+        console.log(`Processing ${geojsonData.features.length} features`);
+
+        // Create a new source if it doesn't exist
+        if (!map.getSource('h3-data')) {
+            console.log('Creating new source');
+            map.addSource('h3-data', {
+                type: 'geojson',
+                data: geojsonData
+            });
+        } else {
+            console.log('Updating existing source');
+            map.getSource('h3-data').setData(geojsonData);
+        }
+
+        // Add or update the layer
+        const layerId = 'h3-layer';
+        if (map.getLayer(layerId)) {
+            map.removeLayer(layerId);
+        }
+
+        map.addLayer({
+            'id': layerId,
+            'type': 'fill',
+            'source': 'h3-data',
+            'paint': {
+                'fill-color': ['get', 'color'],
+                'fill-opacity': 0.7,
+                'fill-outline-color': '#ffffff'
+            },
+            'layout': {
+                'visibility': 'visible'
+            }
+        });
+
+        console.log('Layer added:', map.getLayer(layerId));
+        console.log('Source data:', map.getSource('h3-data').serialize());
+
+        if (!map.getLayer(layerId)) {
+            console.error('Layer not added successfully');
+            return;
+        }
+
+        // Add hover effect
+        const hoverHandler = (e) => {
+            if (e.features.length > 0) {
+                const feature = e.features[0];
+                const metrics = feature.properties.metrics;
+                
+                if (metrics) {
+                    // Update popup content
+                    const popupContent = `
+                        <div class="popup-content">
+                            <h4>${feature.properties.impact_level}</h4>
+                            <p>Hectares Restored: ${metrics.hectares_restored}</p>
+                            <p>Communities Affected: ${metrics.communities_affected}</p>
+                            <p>Cost Efficiency: ${metrics.cost_efficiency}</p>
+                        </div>
+                    `;
+                    
+                    popup.setLngLat(e.lngLat)
+                        .setHTML(popupContent)
+                        .addTo(map);
+                }
+            }
+        };
+
+        // Remove existing event listeners if any
+        map.off('mousemove', layerId, hoverHandler);
+        map.off('mouseleave', layerId);
+
+        // Add new event listeners
+        map.on('mousemove', layerId, hoverHandler);
+        map.on('mouseleave', layerId, () => {
+            popup.remove();
+        });
+
+        // Update the bounds fitting code with better padding and zoom controls
+        try {
+            const bounds = new mapboxgl.LngLatBounds();
+            
+            geojsonData.features.forEach(feature => {
+                if (feature.geometry.type === 'Polygon') {
+                    feature.geometry.coordinates[0].forEach(coord => {
+                        bounds.extend(coord);
+                    });
+                } else if (feature.geometry.type === 'MultiPolygon') {
+                    feature.geometry.coordinates.forEach(polygon => {
+                        polygon[0].forEach(coord => {
+                            bounds.extend(coord);
+                        });
+                    });
+                }
+            });
+
+            // Only fit bounds if we have valid coordinates
+            if (!bounds.isEmpty()) {
+                map.fitBounds(bounds, {
+                    padding: {top: 50, bottom: 50, left: 50, right: 50},
+                    duration: 1500, // Longer animation duration
+                    maxZoom: 10,    // Prevent zooming in too close
+                    minZoom: 2,     // Prevent zooming out too far
+                    essential: true // This animation will happen even if user has disabled animations
+                });
+            } else {
+                console.warn('No valid coordinates found for bounds fitting');
+                // Fallback to a default view if no bounds
+                map.flyTo({
+                    center: [34.5085, 8.7832],
+                    zoom: 4,
+                    duration: 1500
+                });
+            }
+        } catch (error) {
+            console.error('Error fitting bounds:', error);
+            // Fallback to a default view if error occurs
+            map.flyTo({
+                center: [34.5085, 8.7832],
+                zoom: 4,
+                duration: 1500
+            });
+        }
+
+        // Switch to analysis mode first
+        const analysisButton = document.querySelector('[data-mode="analysis"]');
+        if (analysisButton) {
+            analysisButton.click();
+        }
+
+        // Small delay to ensure chat mode has switched
+        setTimeout(() => {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message system-message';
+            
+            const featureCount = geojsonData.features.length;
+            const bounds = geojsonData.metadata?.bounds;
+            
+            let locationInfo = '';
+            if (bounds) {
+                locationInfo = `for region bounded by [${bounds.min_lat.toFixed(2)}°N, ${bounds.min_lng.toFixed(2)}°E] to [${bounds.max_lat.toFixed(2)}°N, ${bounds.max_lng.toFixed(2)}°E]`;
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-text">
+                    ✅ Successfully loaded ${featureCount} geographic features ${locationInfo} to the map.
+                    <br><br>
+                    You can now:
+                    - Hover over hexagons to see detailed metrics
+                    - Ask questions about patterns and trends in this region
+                </div>
+            `;
+            
+            // Insert as the first message after the welcome message
+            if (chatMessages.children.length > 0) {
+                chatMessages.insertBefore(messageDiv, chatMessages.children[1]);
+            } else {
+                chatMessages.appendChild(messageDiv);
+            }
+            
+            // Auto-scroll chat to show the message
+            chatMessages.scrollTop = messageDiv.offsetTop - chatMessages.offsetTop;
+        }, 100);
+
+        console.log('Map updated successfully with', geojsonData.features.length, 'features');
+
+    } catch (error) {
+        console.error('Error updating map:', error);
+        throw error;
+    }
+};
+</script>
+
+<style>
+#map-container {
+    position: relative;
+    height: 100%;
+    width: 100%;
+}
+
+#map {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+}
+
+.popup-content {
+    padding: 10px;
+    max-width: 200px;
+}
+
+.popup-content h4 {
+    margin: 0 0 8px 0;
+    color: #333;
+}
+
+.popup-content p {
+    margin: 4px 0;
+    color: #666;
+}
+</style> 

@@ -1,53 +1,34 @@
-import pandas as pd
-import geopandas as gpd
-from shapely.geometry import Point
+import json
+import logging
+from typing import Dict, Any, Optional
+from .map_service import MapService
+
+logger = logging.getLogger(__name__)
 
 class DatasetService:
     def __init__(self):
-        self.datasets = self._load_sample_data()
-        
-    def _load_sample_data(self):
-        """Load sample dataset"""
-        # Create sample points in San Francisco
-        data = {
-            'id': range(5),
-            'name': ['Park A', 'Park B', 'Park C', 'Park D', 'Park E'],
-            'geometry': [
-                Point(-122.4194, 37.7749),  # San Francisco
-                Point(-122.4099, 37.7850),
-                Point(-122.4369, 37.7720),
-                Point(-122.4784, 37.7775),
-                Point(-122.4071, 37.7835),
-            ],
-            'green_score': [85, 92, 78, 95, 88]
-        }
-        
-        # Convert to GeoDataFrame
-        gdf = gpd.GeoDataFrame(data)
-        
-        # Convert to format Kepler.gl expects
-        return {
-            'green_spaces': {
-                'fields': [
-                    {'name': 'id', 'type': 'integer'},
-                    {'name': 'name', 'type': 'string'},
-                    {'name': 'latitude', 'type': 'real'},
-                    {'name': 'longitude', 'type': 'real'},
-                    {'name': 'green_score', 'type': 'real'}
-                ],
-                'rows': [
-                    [row.id, row.name, row.geometry.y, row.geometry.x, row.green_score]
-                    for idx, row in gdf.iterrows()
-                ]
-            }
-        }
-    
-    def get_available_datasets(self):
-        """Get list of available datasets"""
-        return [
-            {
-                'id': 'green_spaces',
-                'name': 'Green Spaces',
-                'data': self.datasets['green_spaces']
-            }
-        ]
+        self.map_service = MapService()
+        self.available_datasets = self._load_available_datasets()
+
+    def _load_available_datasets(self) -> Dict[str, Any]:
+        """Load available datasets from knowledge base"""
+        try:
+            with open('data/knowledge_base.json', 'r') as f:
+                data = json.load(f)
+                return {dataset['id']: dataset for dataset in data['datasets_available']}
+        except Exception as e:
+            logger.error(f"Error loading datasets: {e}")
+            return {}
+
+    def get_dataset(self, dataset_id: str) -> Optional[Dict[str, Any]]:
+        """Get dataset by ID"""
+        if dataset_id not in self.available_datasets:
+            return None
+        return self.available_datasets[dataset_id]
+
+    def load_dataset_for_map(self, dataset_id: str) -> Dict[str, Any]:
+        """Load dataset and prepare it for map visualization"""
+        if dataset_id == "sdg-15-3-1":
+            return self.map_service.load_sdg_sample()
+        # Add other dataset handlers here
+        return {"error": "Dataset not found"}

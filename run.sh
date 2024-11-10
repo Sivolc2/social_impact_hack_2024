@@ -19,6 +19,9 @@ pip install -r requirements.txt
 export FLASK_APP=src/app.py
 export FLASK_ENV=development
 
+source .env
+source .secrets
+
 # Run the Flask application
 python -m flask run --port=9001
 

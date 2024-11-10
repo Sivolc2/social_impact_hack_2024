@@ -430,3 +430,46 @@ class MapService:
         
         index = min(int(normalized_value * len(colors)), len(colors) - 1)
         return colors[index]
+
+    def load_sdg_sample(self) -> dict:
+        """Load and process the SDG 15.3.1 sample dataset"""
+        try:
+            with open('data/sdg_panama_sample.geojson', 'r') as f:
+                data = json.load(f)
+            
+            # Update view state to center on Panama
+            self.default_view_state.update({
+                "latitude": 8.4,
+                "longitude": -80.1,
+                "zoom": 7,
+                "pitch": 0,
+                "bearing": 0
+            })
+            
+            # Process features to add colors based on degradation values
+            for feature in data['features']:
+                degradation = feature['properties']['degradation_value']
+                
+                # Assign impact level and color based on degradation value
+                if degradation >= 0.8:
+                    impact = 'Critical Impact'
+                elif degradation >= 0.6:
+                    impact = 'High Impact'
+                elif degradation >= 0.4:
+                    impact = 'Medium Impact'
+                elif degradation >= 0.2:
+                    impact = 'Low Impact'
+                else:
+                    impact = 'Minimal Impact'
+                
+                feature['properties']['impact_level'] = impact
+                feature['properties']['color'] = self.impact_colors[impact]
+            
+            return data
+            
+        except Exception as e:
+            logger.error(f"Error loading SDG sample data: {str(e)}")
+            return {
+                'type': 'FeatureCollection',
+                'features': []
+            }
