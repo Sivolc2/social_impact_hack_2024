@@ -7,6 +7,7 @@
       "category": "land_degradation",
       "temporal_range": "2000-2020",
       "spatial_resolution": "300m",
+      "availability": "local",
       "description": "Comprehensive dataset tracking land degradation neutrality through productivity dynamics, land cover changes, and soil carbon stocks. Covers global land surface with particular focus on agricultural and forest areas.",
       "variables": [
         "productivity_trend",
@@ -22,6 +23,7 @@
       "category": "forest_cover",
       "temporal_range": "2000-2023",
       "spatial_resolution": "30m",
+      "availability": "online",
       "description": "Annual tree cover loss and gain data, providing detailed forest change analysis globally",
       "variables": [
         "tree_cover",
@@ -37,6 +39,7 @@
       "category": "conflict_events",
       "temporal_range": "1989-2023",
       "spatial_resolution": "Variable; events are geocoded to specific locations, often down to individual villages",
+      "availability": "local",
       "description": "Detailed data on individual events of organized violence worldwide, including information on date, location, actors involved, and fatalities",
       "variables": [
         "event_date",
