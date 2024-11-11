@@ -9,13 +9,18 @@ document.addEventListener('DOMContentLoaded', function() {
     let isInitialLoad = true;
     let currentData = null;
     let timeRangeInitialized = false;
-    let availableYears = [];
 
-    // Default time range (will be updated when data is loaded)
+    // Hardcoded time range
     let timeRange = {
-        start: 2001,
-        end: 2015
+        start: 2015,
+        end: 2024
     };
+
+    // Available years array
+    const availableYears = Array.from(
+        {length: timeRange.end - timeRange.start + 1}, 
+        (_, i) => timeRange.start + i
+    );
 
     function updateTimelineLabels() {
         const labels = document.querySelector('.timeline-labels');
@@ -28,54 +33,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updateTimeRangeFromData(data) {
-        if (!data?.features?.length) {
-            console.error('No features found in data');
-            return;
-        }
-
-        // Find unique years from features
-        const years = new Set();
-        data.features.forEach(feature => {
-            if (feature.properties?.year) {
-                years.add(parseInt(feature.properties.year));
-            }
-        });
-
-        // Convert to array and sort
-        availableYears = Array.from(years).sort((a, b) => a - b);
-        
-        if (availableYears.length > 0) {
-            timeRange.start = availableYears[0];
-            timeRange.end = availableYears[availableYears.length - 1];
-            console.log(`Timeline range updated: ${timeRange.start} - ${timeRange.end}`);
-            console.log('Available years:', availableYears);
-            
-            updateTimelineLabels();
-            timeRangeInitialized = true;
-
-            // Reset animation state
-            isPlaying = false;
-            if (playButton) {
-                playButton.querySelector('.play-icon').textContent = '▶';
-            }
-            
-            // Set initial slider position
-            slider.value = 0;
-            filterAndDisplayYear(timeRange.start);
-        }
-    }
-
     function getYearFromSliderValue(value) {
-        if (availableYears.length === 0) return timeRange.start;
-        
-        // Calculate the index based on the slider value
-        const index = Math.min(
-            Math.floor((value / 100) * (availableYears.length - 1)),
-            availableYears.length - 1
-        );
-        
-        return availableYears[index];
+        // Calculate year based on slider value (0-100)
+        const yearIndex = Math.floor((value / 100) * (availableYears.length - 1));
+        return availableYears[yearIndex];
     }
 
     function filterAndDisplayYear(year) {
@@ -152,6 +113,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Initialize timeline
+    updateTimelineLabels();
+    
     // Add event listeners
     if (playButton) {
         playButton.addEventListener('click', function() {
@@ -178,17 +142,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.detail?.data) {
             console.log('New data received:', e.detail.data);
             currentData = e.detail.data;
-            timeRangeInitialized = false;
-            
-            // Initialize timeline with new data
-            updateTimeRangeFromData(currentData);
             
             // Reset to start
             slider.value = 0;
             filterAndDisplayYear(timeRange.start);
-            
-            // Log available years for debugging
-            console.log('Available years after data load:', availableYears);
         }
     });
 
@@ -204,9 +161,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add speed button listeners
     speedButtons.forEach(button => {
         button.addEventListener('click', function() {
-            // Remove active class from all buttons
             speedButtons.forEach(btn => btn.classList.remove('active'));
-            // Add active class to clicked button
             this.classList.add('active');
             
             const speed = parseInt(this.dataset.speed);
@@ -219,7 +174,6 @@ document.addEventListener('DOMContentLoaded', function() {
         customSpeedInput.addEventListener('change', function() {
             const speed = parseInt(this.value);
             if (!isNaN(speed) && speed > 0) {
-                // Remove active class from all preset buttons
                 speedButtons.forEach(btn => btn.classList.remove('active'));
                 updateSpeed(speed);
             }
