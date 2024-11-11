@@ -97,11 +97,9 @@ def chat():
     def generate():
         try:
             if current_mode == 'data':
-                response = asyncio.run(data_agent.process_query(user_message))
-                if response.get('error'):
-                    yield f"data: {json.dumps({'chunk': response['response'], 'error': True})}\n\n"
-                else:
-                    yield f"data: {json.dumps({'chunk': response['response']})}\n\n"
+                for chunk in data_agent.stream_query(user_message):
+                    if chunk:
+                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
             else:
                 for chunk in analysis_agent.stream_analysis(user_message):
                     if chunk:

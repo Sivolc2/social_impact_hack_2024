@@ -7,6 +7,8 @@ import anthropic
 from anthropic import Anthropic
 import os
 from .summary_agent import SummaryAgent
+import time
+from time import sleep
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,8 @@ class DataAgent:
         # Load prompts
         self.prompts = self._load_prompts()
         self.summary_agent = SummaryAgent()
+        self._last_request_time = 0
+        self._request_interval = 1.0  # Minimum time between requests in seconds
 
     def _load_prompts(self) -> Dict[str, str]:
         """Load system prompt template"""
@@ -129,13 +133,16 @@ class DataAgent:
             }
         }
 
-    async def process_query(self, query: str) -> Dict[str, Any]:
+    def stream_query(self, query: str) -> str:
+        """Stream the response from Claude with rate limiting"""
         try:
-            if not self.client:
-                return {
-                    'response': "Sorry, I'm having trouble connecting to my knowledge base. Please check the API configuration.",
-                    'error': True
-                }
+            # Add rate limiting
+            current_time = time.time()
+            time_since_last = current_time - self._last_request_time
+            if time_since_last < self._request_interval:
+                sleep(self._request_interval - time_since_last)
+            
+            self._last_request_time = time.time()
 
             # Check if query is about available datasets
             if any(keyword in query.lower() for keyword in ['available', 'datasets', 'list', 'what data']):
@@ -151,7 +158,7 @@ class DataAgent:
                 # Regular similarity search
                 similar_docs = self.vector_store.similarity_search(query, k=5)
                 doc_context = self._format_context(similar_docs)
-            
+
             formatted_prompt = f"""Context:\n{doc_context}\n\nQuery: {query}
             
             Important: If the query is about available datasets or data sources, 
@@ -159,34 +166,37 @@ class DataAgent:
             For other queries about specific information, include relevant details from the context.
             
             If no relevant information is found, please state that explicitly."""
-            
-            # Create message synchronously - don't use await here
-            message = self.client.messages.create(
+
+            with self.client.messages.stream(
                 model="claude-3-sonnet-20240229",
                 max_tokens=1024,
                 system=self.prompts["system"],
                 messages=[{"role": "user", "content": formatted_prompt}]
-            )
-            
-            response_text = message.content[0].text if message and message.content else "No response generated"
-            
-            self.conversation_history.append({
-                'query': query,
-                'response': response_text,
-                'context': doc_context  # Fixed: was using undefined 'context'
-            })
-            
-            return {
-                'response': response_text,
-                'status': 'success'
-            }
-            
+            ) as stream:
+                response_content = ""
+                for message in stream:
+                    if hasattr(message, 'type'):
+                        if message.type == 'content_block_delta':
+                            if hasattr(message, 'delta') and hasattr(message.delta, 'text'):
+                                if message.delta.text:
+                                    response_content += message.delta.text
+                                    yield message.delta.text
+                        elif message.type == 'message_delta':
+                            if hasattr(message, 'delta') and hasattr(message.delta, 'text'):
+                                if message.delta.text:
+                                    response_content += message.delta.text
+                                    yield message.delta.text
+
+                # Store in conversation history
+                self.conversation_history.append({
+                    'query': query,
+                    'response': response_content,
+                    'context': doc_context
+                })
+
         except Exception as e:
-            logger.error(f"Error processing query: {str(e)}")
-            return {
-                'response': f"I apologize, but I encountered an error processing your request: {str(e)}",
-                'status': 'error'
-            }
+            logger.error(f"Error in stream_query: {str(e)}")
+            yield f"Error: {str(e)}"
 
     def _format_context(self, documents: List[Dict]) -> str:
         """Format retrieved documents into context for Claude"""
