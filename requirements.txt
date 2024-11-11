@@ -1,4 +1,5 @@
-flask>=2.0.0
+Flask==2.0.1
+gunicorn==20.1.0
 pydeck>=0.8.0
 pandas>=1.5.0
 geopandas>=0.13.0
@@ -11,4 +12,11 @@ scikit-learn>=1.0.2
 torch>=2.0.0
 transformers>=4.30.0
 anthropic>=0.8.0
-h3>=4.0.0 
+h3>=4.0.0
+flask-cors>=4.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+openai>=1.0.0
+aiohttp>=3.9.0
+pydantic>=2.0.0
+streamlit>=1.29.0 
