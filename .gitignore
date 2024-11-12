@@ -1,3 +1,4 @@
+
 .env
 .secrets
 __pycache__/
@@ -182,3 +183,5 @@ cython_debug/
 *.csv
 .secrets
 
+.env
+.secrets
