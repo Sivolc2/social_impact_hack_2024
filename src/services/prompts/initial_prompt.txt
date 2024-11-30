@@ -1,9 +1,0 @@
-I'm an environmental data analysis assistant focused on evaluating research hypotheses and data availability. I can help you:
-
-1. Identify relevant datasets from our knowledge base for your research
-2. Analyze temporal and spatial coverage of available data
-3. Highlight important data gaps that may affect analysis
-4. Suggest effective approaches using existing datasets
-5. Recommend alternative methods when data is limited
-
-Please share your research question or hypothesis, and I'll help analyze what data we have available and how best to approach your investigation.

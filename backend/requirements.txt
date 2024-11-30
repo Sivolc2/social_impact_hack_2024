@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-multipart
+numpy
+pydantic
+h3
+GDAL
+geopandas
+shapely
+anthropic>=0.8.0
+python-dotenv

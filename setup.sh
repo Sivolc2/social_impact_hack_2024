@@ -1,35 +1,26 @@
 #!/bin/bash
 
-# Source environment variables
-if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
-else
-    echo "Error: .env file not found"
-    exit 1
-fi
+# Create directory structure
+mkdir -p backend/app/{routers,services,data}
+mkdir -p frontend/src/{components,hooks}
 
-# Validate Mapbox token
-if [ -z "$MAPBOX_API_KEY" ] || [ "$MAPBOX_API_KEY" = "your_actual_mapbox_token_here" ]; then
-    echo "Error: Invalid MAPBOX_API_KEY. Please set a valid token in your .env file"
-    exit 1
-fi
+# Create backend files
+touch backend/app/main.py
+touch backend/app/routers/{map.py,chat.py}
+touch backend/app/services/{data_processing.py,llm.py}
+touch backend/requirements.txt
+touch backend/Dockerfile
 
-# Initialize conda for the shell
-eval "$(conda shell.bash hook)"
+# Create frontend files
+touch frontend/src/components/{Map.jsx,ChatWindow.jsx,Layout.jsx}
+touch frontend/src/hooks/{useFetchData.js,useChat.js}
+touch frontend/src/App.jsx
+touch frontend/package.json
+touch frontend/Dockerfile
 
-# Create conda environment if it doesn't exist
-conda create -n the_green python=3.10 -y || true
+touch docker-compose.yml
+touch .env
+touch .gitignore
 
-# Activate environment
-conda activate the_green
-
-# Install pip dependencies
-pip install --upgrade pip
-pip install -e . --no-cache-dir
-
-# Add the project root to PYTHONPATH
-echo "export PYTHONPATH=$PYTHONPATH:$(pwd)" >> ~/.bashrc
-echo "export PYTHONPATH=$PYTHONPATH:$(pwd)" >> ~/.zshrc
-
-source ~/.env
-source ./.secrets
+# Make the script executable
+chmod +x setup.sh 

@@ -1,4 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
 
+# Node
+node_modules/
+build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+.DS_Store
+*.log
+.env
+frontend/.env
 .env
 .secrets
 __pycache__/
